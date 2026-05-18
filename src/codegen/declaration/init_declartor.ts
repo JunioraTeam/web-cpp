@@ -3,25 +3,34 @@ import {Node, SourceLocation} from "../../common/node";
 import {AddressType, Variable} from "../../common/symbol";
 import {AccessControl, Type} from "../../type";
 import {ClassType} from "../../type/class_type";
-import {ArrayType} from "../../type/compound_type";
-import {FunctionType} from "../../type/function_type";
+import {ArrayType, PointerType, ReferenceType} from "../../type/compound_type";
+import {CppFunctionType, FunctionType} from "../../type/function_type";
+import {CharType} from "../../type/primitive_type";
 import {CompileContext} from "../context";
 import {AssignmentExpression} from "../expression/assignment_expression";
 import {Expression, recycleExpressionResult} from "../expression/expression";
 import {Identifier} from "../expression/identifier";
+import {IntegerConstant} from "../expression/integer_constant";
+import {SubscriptExpression} from "../expression/subscript_expression";
 import {UnaryExpression} from "../expression/unary_expression";
+import {MemberExpression} from "../class/member_expression";
 import {CallExpression} from "../function/call_expression";
+import {ExpressionStatement} from "../statement/expression_statement";
+import {getForLoop} from "../statement/for_statement";
 import {declareFunction} from "../function/function";
+import {StringLiteral} from "../expression/string_literal";
 import {Declarator} from "./declarator";
 import {FunctionDeclarator} from "./function_declarator";
 import {InitializerList} from "./initializer_list";
 import {ObjectInitializer} from "./object_initializer";
+import {Pointer, PointerDeclarator} from "./pointer_declarator";
 
 export interface SpecifierInfo {
     type: Type;
     isLibCall: boolean;
     isExtern: boolean;
     isStatic: boolean;
+    isVirtual?: boolean;
     accessControl: AccessControl;
 }
 
@@ -36,8 +45,32 @@ export class InitDeclarator extends Node {
         this.initializer = initializer;
     }
 
-    public initialize(ctx: CompileContext, info: SpecifierInfo) {
+    private getDeclaredType(ctx: CompileContext, info: SpecifierInfo): Type {
         const type = this.declarator.getType(ctx, info.type);
+        if (type instanceof ArrayType && type.size === 0 && this.initializer instanceof InitializerList) {
+            return new ArrayType(type.elementType, this.initializer.items.length);
+        }
+        if (type instanceof ArrayType && type.size === 0 && type.elementType instanceof CharType
+            && this.initializer instanceof StringLiteral) {
+            return new ArrayType(type.elementType, this.initializer.value.length);
+        }
+        return type;
+    }
+
+    private initializeCharArrayFromString(ctx: CompileContext, name: Expression, type: ArrayType, literal: StringLiteral) {
+        if (literal.value.length > type.size) {
+            throw new SyntaxError(`initializer string for char array is too long`, this);
+        }
+        for (let i = 0; i < type.size; i++) {
+            const value = i < literal.value.length ? literal.value.charCodeAt(i) : 0;
+            recycleExpressionResult(ctx, this, new AssignmentExpression(this.location, "=",
+                new SubscriptExpression(this.location, name, IntegerConstant.fromNumber(this.location, i)),
+                IntegerConstant.fromNumber(this.location, value)).codegen(ctx));
+        }
+    }
+
+    public initialize(ctx: CompileContext, info: SpecifierInfo) {
+        const type = this.getDeclaredType(ctx, info);
         const name = this.declarator.getNameRequired();
         const shortName = name.getShortName(ctx);
         if (this.initializer != null) {
@@ -45,9 +78,29 @@ export class InitDeclarator extends Node {
                 throw new SyntaxError(`extern vaiable could not have initializer`, this);
             }
             if (this.initializer instanceof InitializerList) {
-                this.initializer.initialize(ctx, name, type);
+                if (type instanceof ClassType) {
+                    if (this.initializer.canInitializeWithPushBack(ctx, type)) {
+                        new ObjectInitializer(this.initializer.location, []).initialize(ctx, name, type);
+                        for (const arg of this.initializer.toPushBackArguments(ctx, type)) {
+                            recycleExpressionResult(ctx, this, new CallExpression(this.initializer.location,
+                                new MemberExpression(this.initializer.location, name, false,
+                                    Identifier.fromString(this.location, "push_back")),
+                                [arg]).codegen(ctx));
+                        }
+                    } else {
+                        const args = this.initializer.toClassConstructorArguments(ctx, type);
+                        new ObjectInitializer(this.initializer.location, args).initialize(ctx, name, type);
+                    }
+                } else {
+                    this.initializer.initialize(ctx, name, type);
+                }
             } else if (this.initializer instanceof ObjectInitializer) {
                 this.initializer.initialize(ctx, name, type);
+            } else if (type instanceof ArrayType && type.elementType instanceof CharType
+                && this.initializer instanceof StringLiteral) {
+                this.initializeCharArrayFromString(ctx, name, type, this.initializer);
+            } else if (type instanceof ClassType) {
+                new ObjectInitializer(this.initializer.location, [this.initializer]).initialize(ctx, name, type);
             } else {
                 const expr = new AssignmentExpression(this.location, "=",
                     Identifier.fromString(this.location, shortName),
@@ -62,18 +115,53 @@ export class InitDeclarator extends Node {
                 Identifier.fromString(this.location, shortName));
             const expr = new CallExpression(this.location, callee, [thisPtr]);
             recycleExpressionResult(ctx, this, expr.codegen(ctx));
+        } else if (type instanceof ArrayType && type.elementType instanceof ClassType) {
+            const ctorName = type.elementType.fullName + "::#" + type.elementType.shortName;
+            const callee = Identifier.fromString(this.location, ctorName);
+            getForLoop(IntegerConstant.fromNumber(this.location, type.size), (i) => ([
+                new ExpressionStatement(this.location,
+                    new CallExpression(this.location, callee, [
+                        new UnaryExpression(this.location, "&",
+                            new SubscriptExpression(this.location,
+                                Identifier.fromString(this.location, shortName), i)),
+                    ])),
+            ]), this).codegen(ctx);
         }
+    }
+
+    public deduceAutoType(ctx: CompileContext): Type {
+        if (this.initializer === null) {
+            throw new SyntaxError(`auto variable requires an initializer`, this);
+        }
+        if (!(this.initializer instanceof Expression)) {
+            throw new SyntaxError(`cannot deduce auto type from this initializer`, this);
+        }
+        const initializerType = this.initializer.deduceType(ctx);
+        if (this.declarator instanceof PointerDeclarator) {
+            let pointer: Pointer | null = this.declarator.pointer;
+            let declaratorType = initializerType;
+            while (pointer !== null) {
+                if (pointer.type === "*" && declaratorType instanceof PointerType) {
+                    declaratorType = declaratorType.elementType;
+                } else if (pointer.type === "&" && declaratorType instanceof ReferenceType) {
+                    declaratorType = declaratorType.elementType;
+                }
+                pointer = pointer.pointer;
+            }
+            return declaratorType;
+        }
+        return initializerType;
     }
 
     public createVariable(ctx: CompileContext, info: SpecifierInfo): Variable {
         const name = this.declarator.getNameRequired();
         const shortName = name.getShortName(ctx);
         const fullName = name.getFullName(ctx);
-        const type = this.declarator.getType(ctx, info.type);
+        const type = this.getDeclaredType(ctx, info);
         let storageType = AddressType.STACK;
         let location: number | string = 0;
 
-        if (ctx.scopeManager.isRoot() || info.isStatic) {
+        if (ctx.currentFuncContext.currentFunction === null || info.isStatic) {
             if (info.isExtern) {
                 storageType = AddressType.MEMORY_EXTERN;
                 location = fullName;
@@ -98,7 +186,7 @@ export class InitDeclarator extends Node {
     }
 
     public declareGlobal(ctx: CompileContext, info: SpecifierInfo, lookupName: string) {
-        const type = this.declarator.getType(ctx, info.type);
+        const type = this.getDeclaredType(ctx, info);
 
         if (type instanceof ClassType && !type.isComplete) {
             throw new SyntaxError(`cannot instance incomplete type`, this);
@@ -142,7 +230,7 @@ export class InitDeclarator extends Node {
     }
 
     public declareInClass(ctx: CompileContext, info: SpecifierInfo, classType: ClassType) {
-        const type = this.declarator.getType(ctx, info.type);
+        const type = this.getDeclaredType(ctx, info);
         const name = this.declarator.getNameRequired();
         const lookupName = name.getLookupName(ctx);
         if (info.isStatic ) {
@@ -152,6 +240,32 @@ export class InitDeclarator extends Node {
                 throw new SyntaxError(`the static field could only be initialize outside the class`, this);
             }
         } else {
+            if (type instanceof FunctionType) {
+                const functionDeclarator = FunctionDeclarator.getFunctionDeclarator(this.declarator);
+                if (!functionDeclarator) {
+                    throw new InternalError(`function is not a functionDeclarator`);
+                }
+                type.parameterTypes = [new PointerType(classType), ...type.parameterTypes];
+                type.cppFunctionType = CppFunctionType.MemberFunction;
+                type.referenceClass = classType;
+                const isVirtual = !!info.isVirtual;
+                const fullName = name.getFullName(ctx) + "@" + type.toMangledName();
+                const vcallSigature = name.getShortName(ctx) + "@" + type.parameterTypes
+                    .slice(1).map((x) => x.toString()).join(",");
+                if (isVirtual) {
+                    type.isVirtual = true;
+                    classType.registerVFunction(ctx, vcallSigature, fullName);
+                }
+                declareFunction(ctx, {
+                    name: lookupName,
+                    functionType: type,
+                    parameterNames: ["this", ...functionDeclarator.parameters.getNameList(ctx)],
+                    parameterInits: [null, ...functionDeclarator.parameters.getInitList(ctx)],
+                    accessControl: classType.accessControl,
+                    isLibCall: info.isLibCall,
+                }, this);
+                return;
+            }
             const plainName = name.getPlainName(ctx);
             if (this.initializer instanceof InitializerList) {
                 // todo::

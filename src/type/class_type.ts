@@ -8,9 +8,10 @@ import {CompileContext} from "../codegen/context";
 import {ObjectInitializer} from "../codegen/declaration/object_initializer";
 import {Expression} from "../codegen/expression/expression";
 import {FunctionLookUpResult} from "../codegen/scope";
-import {InternalError} from "../common/error";
+import {InternalError, SyntaxError} from "../common/error";
+import {Node} from "../common/node";
 import {Variable} from "../common/symbol";
-import {ClassTemplate} from "../common/template";
+import {AliasTemplate, ClassTemplate} from "../common/template";
 import {WType} from "../wasm";
 import {AccessControl, Type} from "./index";
 
@@ -166,26 +167,58 @@ export class ClassType extends Type {
         return null;
     }
 
-    public getMember(ctx: CompileContext, name: string): ClassField | Variable | FunctionLookUpResult | null {
+    public getMember(ctx: CompileContext, name: string, node?: Node): ClassField | Variable | FunctionLookUpResult | null {
         const item = ctx.scopeManager.lookup(this.fullName + "::" + name);
         if (item !== null) {
-            if (item instanceof Type || item instanceof ClassTemplate) {
+            if (item instanceof Type || item instanceof ClassTemplate || item instanceof AliasTemplate) {
                 return null;
+            } else if (item instanceof FunctionLookUpResult) {
+                const functions = item.functions.filter((func) => this.canAccess(ctx, func.accessControl));
+                if (functions.length === 0 && item.functions.length > 0) {
+                    this.throwAccessError(name, item.functions[0].accessControl, node);
+                }
+                item.functions = functions;
+                return item;
+            } else if (!this.canAccess(ctx, item.accessControl)) {
+                this.throwAccessError(name, item.accessControl, node);
             } else {
                 return item;
             }
         }
         const field = this.fieldMap.get(name);
         if ( field ) {
+            if (!this.canAccess(ctx, field.accessControl)) {
+                this.throwAccessError(name, field.accessControl, node);
+            }
             return field;
         }
         for (const obj of this.inheritance) {
-            const subItem = obj.classType.getMember(ctx, name);
+            const subItem = obj.classType.getMember(ctx, name, node);
             if (subItem) {
                 return subItem;
             }
         }
         return null;
+    }
+
+    private canAccess(ctx: CompileContext, accessControl: AccessControl) {
+        if (accessControl === AccessControl.Public || accessControl === AccessControl.Unknown) {
+            return true;
+        }
+        const currentFunction = ctx.currentFuncContext.currentFunction;
+        const currentClass = currentFunction && currentFunction.type.referenceClass;
+        if (!currentClass) {
+            return false;
+        }
+        if (currentClass === this) {
+            return true;
+        }
+        return accessControl === AccessControl.Protected && currentClass.isSubClassOf(this);
+    }
+
+    private throwAccessError(name: string, accessControl: AccessControl, node?: Node): never {
+        const label = AccessControl[accessControl].toLowerCase();
+        throw new SyntaxError(`${name} is ${label} in ${this.shortName}`, node!);
     }
 
     public setUpVPtr() {

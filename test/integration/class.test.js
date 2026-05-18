@@ -78,6 +78,27 @@ describe('class integration test', function () {
         const expectOutput = `14`;
         return await TestBase.testFullCode(testCode, expectOutput);
     });
+    it('test struct bit field syntax', async function() {
+        const testCode = `
+#include <stdio.h>
+        struct Flags{
+            int ready : 1;
+            int mode : 3, count : 4;
+            int : 0;
+            int value;
+        };
+        int main(){
+            Flags flags;
+            flags.ready = 1;
+            flags.mode = 2;
+            flags.count = 7;
+            flags.value = flags.ready + flags.mode + flags.count;
+            printf("%d", flags.value);
+            return 0;
+        }`;
+        const expectOutput = `10`;
+        return await TestBase.testFullCode(testCode, expectOutput, {isCpp: true});
+    });
     it('test class cpp', async function() {
         const testCode = `
 #include <stdio.h>
@@ -255,6 +276,115 @@ dtor`;
         }
         `;
         const expectOutput = `A()\nA()\nA::foo()\nB::foo()\nA::foo()\nB::foo()\n~A()\n~B()\n~A()\n`;
+        return await TestBase.testFullCode(testCode, expectOutput, {isCpp: true});
+    });
+    it('test conversion operator and named casts', async function() {
+        const testCode = `
+#include <stdio.h>
+        class Flag {
+        public:
+            int value;
+            Flag(int v): value(v) {}
+            operator bool() {
+                return value;
+            }
+        };
+        int main() {
+            Flag f(3);
+            if (f) {
+                printf("%d", static_cast<int>(f));
+            }
+            return 0;
+        }`;
+        const expectOutput = `1`;
+        return await TestBase.testFullCode(testCode, expectOutput, {isCpp: true});
+    });
+    it('test const left reference binding', async function() {
+        const testCode = `
+#include <stdio.h>
+        int main() {
+            const int &value = 7;
+            printf("%d", value);
+            return 0;
+        }`;
+        const expectOutput = `7`;
+        return await TestBase.testFullCode(testCode, expectOutput, {isCpp: true});
+    });
+    it('test placement new and local array destruction', async function() {
+        const testCode = `
+#include <stdio.h>
+        class A {
+        public:
+            int value;
+            A() {
+                value = 9;
+                printf("c");
+            }
+            ~A() {
+                printf("d");
+            }
+        };
+        int main() {
+            char storage[4];
+            A *placed = new (storage) A();
+            printf("%d", placed->value);
+            A items[1];
+            return 0;
+        }`;
+        const expectOutput = `c9cd`;
+        return await TestBase.testFullCode(testCode, expectOutput, {isCpp: true});
+    });
+    it('test template using alias and qualified nested class scope', async function() {
+        const testCode = `
+#include <stdio.h>
+        template<typename T>
+        using Alias = T;
+        class A {
+        public:
+            class B;
+        };
+        class A::B {
+        public:
+            int value;
+        };
+        class D: public A::B {
+        };
+        int main() {
+            Alias<int> x = 4;
+            D d;
+            d.value = 5;
+            printf("%d,%d", x, d.value);
+            return 0;
+        }`;
+        const expectOutput = `4,5`;
+        return await TestBase.testFullCode(testCode, expectOutput, {isCpp: true});
+    });
+    it('test const override separate definitions typeinfo and virtual inherit syntax', async function() {
+        const testCode = `
+#include <stdio.h>
+        class A {
+        public:
+            virtual int value() const;
+        };
+        int A::value() const {
+            return 3;
+        }
+        class B: public virtual A {
+        public:
+            int value() const override {
+                return 5;
+            }
+        };
+        int declared();
+        int declared() {
+            return 7;
+        }
+        int main() {
+            B b;
+            printf("%d,%d,%s", b.value(), declared(), typeid(b));
+            return 0;
+        }`;
+        const expectOutput = `5,7,B`;
         return await TestBase.testFullCode(testCode, expectOutput, {isCpp: true});
     });
 });

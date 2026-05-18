@@ -181,6 +181,9 @@ export function scanf(this: Runtime): number {
                     last = ch;
                     ch = getchar.apply(this);
                 }
+                if (ch === -1) {
+                    return result === 0 ? -1 : result;
+                }
                 if ( last === CC_L) {
                     isNeg = 1;
                 }
@@ -213,6 +216,9 @@ export function scanf(this: Runtime): number {
             } else if (chr2 === "s") {
                 let addr = this.memory.getInt32(sp, true);
                 let ch = getchar.apply(this);
+                if (ch === -1) {
+                    return result === 0 ? -1 : result;
+                }
                 while ( ch !== -1 && ch !== CC_NL && ch !== CC_S
                 && ch !== CC_TAB) {
                     this.memory.setUint8(addr++, ch);
@@ -226,6 +232,9 @@ export function scanf(this: Runtime): number {
                 while (ch !== -1 && !(ch >= CC_0 && ch <= CC_9 || ch === CC_P)) {
                     last = ch;
                     ch = getchar.apply(this);
+                }
+                if (ch === -1) {
+                    return result === 0 ? -1 : result;
                 }
                 if ( last === CC_L) {
                     isNeg = 1;

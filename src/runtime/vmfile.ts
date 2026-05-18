@@ -6,6 +6,8 @@
 import {InternalError} from "../common/error";
 import {fromBytesToString} from "../common/utils";
 
+export const DEFAULT_MAX_VM_FILE_BYTES = 100000;
+
 export abstract class VMFile {
 
     public abstract read(buffer: ArrayBuffer, offset: number, size: number): number;
@@ -32,10 +34,14 @@ export class NoInputFile extends VMFile {
 
 export class CommandOutputFile extends VMFile {
     public buffer: string;
+    public bytesWritten: number;
+    public maxBytes: number;
 
-    constructor() {
+    constructor(maxBytes: number = DEFAULT_MAX_VM_FILE_BYTES) {
         super();
         this.buffer = "";
+        this.bytesWritten = 0;
+        this.maxBytes = maxBytes;
     }
 
     public read(buffer: ArrayBuffer, offset: number, size: number): number {
@@ -43,6 +49,10 @@ export class CommandOutputFile extends VMFile {
     }
 
     public write(buffer: ArrayBuffer): number {
+        this.bytesWritten += buffer.byteLength;
+        if (this.bytesWritten > this.maxBytes) {
+            throw new RangeError("maximum output bytes exceeded");
+        }
         this.buffer += fromBytesToString(new DataView(buffer), 0, buffer.byteLength);
         if (this.buffer.includes("\n")) {
             const lines = this.buffer.split("\n");
@@ -66,11 +76,18 @@ export class CommandOutputFile extends VMFile {
 export class StringInputFile extends VMFile {
     public str: string;
     public offset: number;
+    public bytesRead: number;
+    public maxBytes: number;
 
-    constructor(str: string) {
+    constructor(str: string = "", maxBytes: number = DEFAULT_MAX_VM_FILE_BYTES) {
         super();
+        if (str.length > maxBytes) {
+            throw new RangeError("maximum input bytes exceeded");
+        }
         this.str = str;
         this.offset = 0;
+        this.bytesRead = 0;
+        this.maxBytes = maxBytes;
     }
 
     public flush(): number {
@@ -84,6 +101,10 @@ export class StringInputFile extends VMFile {
             new DataView(buffer).setUint8(offset + i, this.str.charCodeAt(this.offset));
             this.offset ++;
             bytes++;
+            this.bytesRead++;
+            if (this.bytesRead > this.maxBytes) {
+                throw new RangeError("maximum input bytes exceeded");
+            }
         }
         return bytes;
     }
@@ -95,10 +116,14 @@ export class StringInputFile extends VMFile {
 
 export class StringOutputFile extends VMFile {
     public output: string[];
+    public bytesWritten: number;
+    public maxBytes: number;
 
-    constructor(output: string[]) {
+    constructor(output: string[], maxBytes: number = DEFAULT_MAX_VM_FILE_BYTES) {
         super();
         this.output = output;
+        this.bytesWritten = 0;
+        this.maxBytes = maxBytes;
     }
 
     public read(buffer: ArrayBuffer, offset: number, size: number): number {
@@ -106,6 +131,10 @@ export class StringOutputFile extends VMFile {
     }
 
     public write(buffer: ArrayBuffer): number {
+        this.bytesWritten += buffer.byteLength;
+        if (this.bytesWritten > this.maxBytes) {
+            throw new RangeError("maximum output bytes exceeded");
+        }
         this.output[0] += fromBytesToString(new DataView(buffer), 0, buffer.byteLength);
         return buffer.byteLength;
     }
@@ -117,10 +146,14 @@ export class StringOutputFile extends VMFile {
 
 export class CallbackOutputFile extends VMFile {
     public callback: (content: string) => void;
+    public bytesWritten: number;
+    public maxBytes: number;
 
-    constructor(callback: (content: string) => void) {
+    constructor(callback: (content: string) => void, maxBytes: number = DEFAULT_MAX_VM_FILE_BYTES) {
         super();
         this.callback = callback;
+        this.bytesWritten = 0;
+        this.maxBytes = maxBytes;
     }
 
     public read(buffer: ArrayBuffer, offset: number, size: number): number {
@@ -128,6 +161,10 @@ export class CallbackOutputFile extends VMFile {
     }
 
     public write(buffer: ArrayBuffer): number {
+        this.bytesWritten += buffer.byteLength;
+        if (this.bytesWritten > this.maxBytes) {
+            throw new RangeError("maximum output bytes exceeded");
+        }
         this.callback(fromBytesToString(new DataView(buffer), 0, buffer.byteLength));
         return buffer.byteLength;
     }

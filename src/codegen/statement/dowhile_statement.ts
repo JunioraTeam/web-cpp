@@ -4,6 +4,7 @@ import {WBlock, WBrIf, WLoop, WStatement} from "../../wasm";
 import {CompileContext} from "../context";
 import {doConversion} from "../conversion";
 import {Expression} from "../expression/expression";
+import {emitLoopTick} from "./loop_guard";
 import {Statement} from "./statement";
 
 export class DoWhileStatement extends Statement {
@@ -35,6 +36,7 @@ export class DoWhileStatement extends Statement {
 
         // <-- loop -->
         ctx.setStatementContainer(doWhileLoop);
+        emitLoopTick(ctx, this.location);
         ctx.submitStatement(new WBlock(doWhileBlock, this.location));
         const condition = this.test.codegen(ctx);
         condition.expr = doConversion(ctx, PrimitiveTypes.int32, condition, this);

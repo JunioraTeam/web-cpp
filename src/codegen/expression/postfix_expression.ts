@@ -23,11 +23,18 @@ export class PostfixExpression extends Expression {
         if (!ope.isLeft || !(ope.expr instanceof WAddressHolder)) {
             throw new SyntaxError(`your could not ++ a left value`, this);
         }
+        const [, oldValue] = ctx.allocTmpVar(ope.type, this);
+        const oldValueHolder = new WAddressHolder(oldValue.location, oldValue.addressType, this.location);
+        ctx.submitStatement(oldValueHolder.createStore(ctx, ope.type, ope.expr.createLoad(ctx, ope.type)));
         recycleExpressionResult(ctx, this, new AssignmentExpression(this.location,
             "=", this.operand, new BinaryExpression(
                 this.location, this.decrement ? "-" : "+", this.operand, IntegerConstant.OneConstant,
             )).codegen(ctx));
-        return ope;
+        return {
+            type: ope.type,
+            expr: oldValueHolder.createLoad(ctx, ope.type),
+            isLeft: false,
+        };
     }
 
     public deduceType(ctx: CompileContext): Type {

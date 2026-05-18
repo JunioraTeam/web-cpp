@@ -1,0 +1,180 @@
+#ifndef _CPP_VECTOR
+#define _CPP_VECTOR
+
+__libcall void __container_error(char *message);
+
+namespace std {
+
+template<typename T>
+class vector {
+    T *data_;
+    int size_;
+    int capacity_;
+
+    void grow_to(int new_capacity) {
+        if (new_capacity <= capacity_) {
+            return;
+        }
+        T *new_data = new T[new_capacity];
+        for (int i = 0; i < size_; i++) {
+            new_data[i] = data_[i];
+        }
+        delete[] data_;
+        data_ = new_data;
+        capacity_ = new_capacity;
+    }
+
+    void grow() {
+        int new_capacity = capacity_ * 2;
+        if (new_capacity < 1) {
+            new_capacity = 1;
+        }
+        grow_to(new_capacity);
+    }
+
+public:
+    using iterator = T *;
+
+    vector() {
+        size_ = 0;
+        capacity_ = 4;
+        data_ = new T[capacity_];
+    }
+
+    vector(int value_count) {
+        if (value_count < 0) {
+            __container_error("vector count constructor negative size");
+        }
+        size_ = value_count;
+        capacity_ = 4;
+        while (capacity_ < value_count) {
+            capacity_ = capacity_ * 2;
+        }
+        data_ = new T[capacity_];
+    }
+
+    vector(int value_count, T value) {
+        size_ = 0;
+        capacity_ = 4;
+        while (capacity_ < value_count) {
+            capacity_ = capacity_ * 2;
+        }
+        data_ = new T[capacity_];
+        for (int i = 0; i < value_count; i++) {
+            push_back(value);
+        }
+    }
+
+    void reserve(int new_capacity) {
+        grow_to(new_capacity);
+    }
+
+    int size() {
+        return size_;
+    }
+
+    int capacity() {
+        return capacity_;
+    }
+
+    T *begin() {
+        return data_;
+    }
+
+    T *end() {
+        return data_ + size_;
+    }
+
+    bool empty() {
+        return size_ == 0;
+    }
+
+    void clear() {
+        size_ = 0;
+    }
+
+    void resize(int new_size) {
+        if (new_size < 0) {
+            __container_error("vector::resize negative size");
+        }
+        grow_to(new_size);
+        size_ = new_size;
+    }
+
+    T *erase(T *first, T *last) {
+        int start = first - data_;
+        int finish = last - data_;
+        if (start < 0 || start > size_ || finish < start || finish > size_) {
+            __container_error("vector::erase iterator out of range");
+        }
+        int removed = finish - start;
+        for (int i = start; i + removed < size_; i++) {
+            data_[i] = data_[i + removed];
+        }
+        size_ = size_ - removed;
+        return data_ + start;
+    }
+
+    T *insert(T *position, T value) {
+        int index = position - data_;
+        if (index < 0 || index > size_) {
+            __container_error("vector::insert iterator out of range");
+        }
+        if (size_ == capacity_) {
+            grow();
+        }
+        for (int i = size_; i > index; i--) {
+            data_[i] = data_[i - 1];
+        }
+        data_[index] = value;
+        size_ = size_ + 1;
+        return data_ + index;
+    }
+
+    void push_back(T value) {
+        if (size_ == capacity_) {
+            grow();
+        }
+        data_[size_] = value;
+        size_ = size_ + 1;
+    }
+
+    void pop_back() {
+        if (size_ == 0) {
+            __container_error("vector::pop_back on empty vector");
+        }
+        size_ = size_ - 1;
+    }
+
+    T& operator[](int index) {
+        if (index < 0 || index >= size_) {
+            __container_error("vector index out of range");
+        }
+        return data_[index];
+    }
+
+    T& at(int index) {
+        if (index < 0 || index >= size_) {
+            __container_error("vector::at index out of range");
+        }
+        return data_[index];
+    }
+
+    T& front() {
+        if (size_ == 0) {
+            __container_error("vector::front on empty vector");
+        }
+        return data_[0];
+    }
+
+    T& back() {
+        if (size_ == 0) {
+            __container_error("vector::back on empty vector");
+        }
+        return data_[size_ - 1];
+    }
+};
+
+}
+
+#endif

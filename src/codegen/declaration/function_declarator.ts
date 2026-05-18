@@ -12,10 +12,15 @@ export class FunctionDeclarator extends Declarator {
             (decl.declarator ? this.getFunctionDeclarator(decl.declarator) : null);
     }
     public parameters: ParameterList;
+    public isConst: boolean;
+    public isOverride: boolean;
 
-    constructor(location: SourceLocation, declarator: Declarator, parameters: ParameterList) {
+    constructor(location: SourceLocation, declarator: Declarator, parameters: ParameterList,
+                isConst: boolean = false, isOverride: boolean = false) {
         super(location, declarator);
         this.parameters = parameters;
+        this.isConst = isConst;
+        this.isOverride = isOverride;
     }
 
     public getType(ctx: CompileContext, baseType: Type): Type {

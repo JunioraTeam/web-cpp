@@ -7,6 +7,7 @@ import {Expression, recycleExpressionResult} from "../expression/expression";
 import {Identifier} from "../expression/identifier";
 import {UnaryExpression} from "../expression/unary_expression";
 import {CallExpression} from "../function/call_expression";
+import {AssignmentExpression} from "../expression/assignment_expression";
 
 export class ObjectInitializer extends Node {
     public argus: Expression[];
@@ -25,6 +26,16 @@ export class ObjectInitializer extends Node {
         const thisPtr = new UnaryExpression(this.location, "&",
             Identifier.fromString(this.location, name.getPlainName(ctx)));
         const expr = new CallExpression(this.location, callee, [thisPtr, ...this.argus]);
-        recycleExpressionResult(ctx, this, expr.codegen(ctx));
+        try {
+            recycleExpressionResult(ctx, this, expr.codegen(ctx));
+        } catch (e) {
+            if (this.argus.length !== 1 || !this.argus[0].deduceType(ctx).compatWith(type)) {
+                throw e;
+            }
+            const assignExpr = new AssignmentExpression(this.location, "=",
+                Identifier.fromString(this.location, name.getPlainName(ctx)), this.argus[0]);
+            assignExpr.isInitExpr = true;
+            recycleExpressionResult(ctx, this, assignExpr.codegen(ctx));
+        }
     }
 }

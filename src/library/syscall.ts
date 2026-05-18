@@ -13,6 +13,29 @@ export function write(this: Runtime, fd: number, ptr: number, size: number): num
     return file.write(this.memory.buffer.slice(ptr, ptr + size));
 }
 
+export function __cout_str(this: Runtime, ptr: number): void {
+    let end = ptr;
+    while (this.memory.getUint8(end) !== 0) {
+        end++;
+    }
+    this.files[1].write(this.memory.buffer.slice(ptr, end));
+}
+
+export function __container_error(this: Runtime, message: number): void {
+    throw new RangeError(this.readMemoryString(message));
+}
+
+export function __input_error(this: Runtime, message: number): void {
+    throw new RangeError(this.readMemoryString(message));
+}
+
+export function __loop_tick(this: Runtime): void {
+    this.loopIterations++;
+    if (this.loopIterations > this.maxLoopIterations) {
+        throw new RangeError("maximum loop iterations exceeded");
+    }
+}
+
 export function read(this: Runtime, fd: number, ptr: number, size: number): number {
     if (fd >= this.files.length) {
         return -1;

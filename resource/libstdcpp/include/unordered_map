@@ -1,0 +1,159 @@
+#ifndef _CPP_UNORDERED_MAP
+#define _CPP_UNORDERED_MAP
+
+#include <utility>
+
+__libcall void __container_error(char *message);
+
+namespace std {
+
+template<typename UnorderedMapK, typename UnorderedMapV>
+class unordered_map {
+    pair<UnorderedMapK, UnorderedMapV> *entries_;
+    int size_;
+    int capacity_;
+
+    void grow() {
+        int new_capacity = capacity_ * 2;
+        pair<UnorderedMapK, UnorderedMapV> *new_entries = new pair<UnorderedMapK, UnorderedMapV>[new_capacity];
+        for (int i = 0; i < size_; i++) {
+            new_entries[i] = entries_[i];
+        }
+        delete[] entries_;
+        entries_ = new_entries;
+        capacity_ = new_capacity;
+    }
+
+    int find_index(UnorderedMapK key) {
+        for (int i = 0; i < size_; i++) {
+            if (entries_[i].first == key) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+public:
+    unordered_map() {
+        size_ = 0;
+        capacity_ = 4;
+        entries_ = new pair<UnorderedMapK, UnorderedMapV>[capacity_];
+    }
+
+    bool empty() {
+        return size_ == 0;
+    }
+
+    int size() {
+        return size_;
+    }
+
+    pair<UnorderedMapK, UnorderedMapV> *begin() {
+        return entries_;
+    }
+
+    pair<UnorderedMapK, UnorderedMapV> *end() {
+        return entries_ + size_;
+    }
+
+    void clear() {
+        size_ = 0;
+    }
+
+    void insert(pair<UnorderedMapK, UnorderedMapV> value) {
+        int index = find_index(value.first);
+        if (index != -1) {
+            return;
+        }
+        if (size_ == capacity_) {
+            grow();
+        }
+        for (int i = size_; i > 0; i--) {
+            entries_[i] = entries_[i - 1];
+        }
+        entries_[0] = value;
+        size_ = size_ + 1;
+    }
+
+    void insert(UnorderedMapK key, UnorderedMapV value) {
+        pair<UnorderedMapK, UnorderedMapV> item;
+        item.first = key;
+        item.second = value;
+        insert(item);
+    }
+
+    void push_back(pair<UnorderedMapK, UnorderedMapV> value) {
+        int index = find_index(value.first);
+        if (index != -1) {
+            return;
+        }
+        if (size_ == capacity_) {
+            grow();
+        }
+        entries_[size_] = value;
+        size_ = size_ + 1;
+    }
+
+    UnorderedMapV& operator[](UnorderedMapK key) {
+        int index = find_index(key);
+        if (index != -1) {
+            return entries_[index].second;
+        }
+        if (size_ == capacity_) {
+            grow();
+        }
+        entries_[size_].first = key;
+        entries_[size_].second = UnorderedMapV();
+        size_ = size_ + 1;
+        return entries_[size_ - 1].second;
+    }
+
+    UnorderedMapV& at(UnorderedMapK key) {
+        int index = find_index(key);
+        if (index == -1) {
+            __container_error("unordered_map::at key not found");
+        }
+        return entries_[index].second;
+    }
+
+    pair<UnorderedMapK, UnorderedMapV> *find(UnorderedMapK key) {
+        int index = find_index(key);
+        if (index == -1) {
+            return end();
+        }
+        return entries_ + index;
+    }
+
+    int count(UnorderedMapK key) {
+        if (find_index(key) == -1) {
+            return 0;
+        }
+        return 1;
+    }
+
+    void erase(UnorderedMapK key) {
+        int index = find_index(key);
+        if (index == -1) {
+            return;
+        }
+        for (int i = index; i < size_ - 1; i++) {
+            entries_[i] = entries_[i + 1];
+        }
+        size_ = size_ - 1;
+    }
+
+    void erase(pair<UnorderedMapK, UnorderedMapV> *it) {
+        int index = it - entries_;
+        if (index < 0 || index >= size_) {
+            __container_error("unordered_map::erase iterator out of range");
+        }
+        for (int i = index; i < size_ - 1; i++) {
+            entries_[i] = entries_[i + 1];
+        }
+        size_ = size_ - 1;
+    }
+};
+
+}
+
+#endif

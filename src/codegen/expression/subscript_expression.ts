@@ -8,6 +8,7 @@ import {ClassType} from "../../type/class_type";
 import {CallExpression} from "../function/call_expression";
 import {MemberExpression} from "../class/member_expression";
 import {Identifier} from "./identifier";
+import {ReferenceType} from "../../type/compound_type";
 
 export class SubscriptExpression extends Expression {
     public array: Expression;
@@ -31,7 +32,10 @@ export class SubscriptExpression extends Expression {
     }
 
     public codegen(ctx: CompileContext): ExpressionResult {
-        const leftType = this.array.deduceType(ctx);
+        let leftType = this.array.deduceType(ctx);
+        if (leftType instanceof ReferenceType) {
+            leftType = leftType.elementType;
+        }
 
         if (leftType instanceof ClassType) {
             const item = ctx.scopeManager.lookup(
@@ -49,7 +53,10 @@ export class SubscriptExpression extends Expression {
     }
 
     public deduceType(ctx: CompileContext): Type {
-        const leftType = this.array.deduceType(ctx);
+        let leftType = this.array.deduceType(ctx);
+        if (leftType instanceof ReferenceType) {
+            leftType = leftType.elementType;
+        }
 
         if (leftType instanceof ClassType) {
             const item = ctx.scopeManager.lookup(

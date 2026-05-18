@@ -4,7 +4,7 @@ import {SourceLocation} from "../../common/node";
 import {AddressType, FunctionEntity} from "../../common/symbol";
 import {Type} from "../../type";
 import {ClassType} from "../../type/class_type";
-import {ArrayType, PointerType} from "../../type/compound_type";
+import {ArrayType, LeftReferenceType, PointerType} from "../../type/compound_type";
 import {CppFunctionType, FunctionType, UnresolvedFunctionOverloadType} from "../../type/function_type";
 import {PrimitiveTypes} from "../../type/primitive_type";
 import {
@@ -27,16 +27,131 @@ import {Expression, ExpressionResult} from "../expression/expression";
 import {Identifier} from "../expression/identifier";
 import {IntegerConstant} from "../expression/integer_constant";
 import {UnaryExpression} from "../expression/unary_expression";
-import {doFunctionOverloadResolution, isFunctionExists} from "../overload";
+import {doFunctionOverloadResolution, doWeakTypeMatch, isFunctionExists} from "../overload";
+import {ClassConstructExpression, InitializerList, InitializerListExpression} from "../declaration/initializer_list";
+
+type CallArgument = Expression | InitializerList;
 
 export class CallExpression extends Expression {
     public callee: Expression;
-    public arguments: Expression[];
+    public arguments: CallArgument[];
 
-    constructor(location: SourceLocation, callee: Expression, myArguments: Expression[]) {
+    constructor(location: SourceLocation, callee: Expression, myArguments: CallArgument[]) {
         super(location);
         this.callee = callee;
         this.arguments = myArguments;
+    }
+
+    private getArgumentTypes(ctx: CompileContext): Type[] {
+        return this.arguments.map((arg) => {
+            if (arg instanceof InitializerList) {
+                throw new SyntaxError(`initializer list argument needs a target parameter type`, arg);
+            }
+            return arg.deduceType(ctx);
+        });
+    }
+
+    private canUseInitializerListArgument(ctx: CompileContext, initializer: InitializerList, parameterType: Type): boolean {
+        if (parameterType instanceof ClassType) {
+            try {
+                initializer.toClassConstructorArguments(ctx, parameterType);
+                return true;
+            } catch (e) {
+                return false;
+            }
+        }
+        return parameterType instanceof ArrayType;
+    }
+
+    private matchCallArgument(ctx: CompileContext, parameterType: Type, arg: CallArgument): boolean {
+        if (arg instanceof InitializerList) {
+            return this.canUseInitializerListArgument(ctx, arg, parameterType);
+        }
+        if (!doWeakTypeMatch(parameterType, arg.deduceType(ctx))
+            && parameterType instanceof ClassType
+            && this.canConstructClassFromExpression(ctx, parameterType, arg)) {
+            return true;
+        }
+        return doWeakTypeMatch(parameterType, arg.deduceType(ctx));
+    }
+
+    private canConstructClassFromExpression(ctx: CompileContext, type: ClassType, expression: Expression): boolean {
+        const ctorName = type.fullName + "::#" + type.shortName;
+        return isFunctionExists(ctx, ctorName, [new PointerType(type), expression.deduceType(ctx)]);
+    }
+
+    private resolveFlexibleOverload(ctx: CompileContext,
+                                    lookUpResult: UnresolvedFunctionOverloadType): FunctionEntity | null {
+        const funcs = lookUpResult.functionLookupResult.functions
+            .filter((x) => x instanceof FunctionEntity) as FunctionEntity[];
+        for (const func of funcs) {
+            const parameterTypes = func.type.isMemberFunction()
+                ? func.type.parameterTypes.slice(1)
+                : func.type.parameterTypes;
+            if (parameterTypes.length !== this.arguments.length) {
+                continue;
+            }
+            let matched = true;
+            for (let i = 0; i < parameterTypes.length; i++) {
+                if (!this.matchCallArgument(ctx, parameterTypes[i], this.arguments[i])) {
+                    matched = false;
+                    break;
+                }
+            }
+            if (matched) {
+                return func;
+            }
+        }
+        return null;
+    }
+
+    private getPreparedArguments(ctx: CompileContext, funcType: FunctionType): Expression[] {
+        return this.arguments.map((arg, index) => {
+            const parameterType = funcType.parameterTypes[index];
+            if (parameterType === undefined) {
+                return arg instanceof InitializerList
+                    ? new InitializerListExpression(arg.location, arg, new ArrayType(PrimitiveTypes.int32, arg.items.length))
+                    : arg;
+            }
+            if (!(arg instanceof InitializerList)) {
+                if (!doWeakTypeMatch(parameterType, arg.deduceType(ctx))
+                    && parameterType instanceof ClassType
+                    && this.canConstructClassFromExpression(ctx, parameterType, arg)) {
+                    return new ClassConstructExpression(arg.location, parameterType, [arg]);
+                }
+                return arg;
+            }
+            if (!(parameterType instanceof ClassType || parameterType instanceof ArrayType)) {
+                throw new SyntaxError(`initializer list argument requires class or array parameter type`, arg);
+            }
+            return new InitializerListExpression(arg.location, arg, parameterType);
+        });
+    }
+
+    private createInitializerListMinMaxExpression(ctx: CompileContext): Expression | null {
+        if (!(this.callee instanceof Identifier) || this.arguments.length !== 1
+            || !(this.arguments[0] instanceof InitializerList)) {
+            return null;
+        }
+        const name = this.callee.getPlainName(ctx);
+        if (name !== "min" && name !== "max") {
+            return null;
+        }
+        const initializer = this.arguments[0] as InitializerList;
+        const items = initializer.items;
+        if (items.length === 0) {
+            throw new SyntaxError(`${name} requires a non-empty initializer list`, initializer);
+        }
+        let result: Expression | null = null;
+        for (const item of items) {
+            if (!(item.initializer instanceof Expression)) {
+                throw new SyntaxError(`${name} initializer list cannot contain nested initializer lists`, item);
+            }
+            result = result === null
+                ? item.initializer
+                : new CallExpression(this.location, this.callee.clone(), [result, item.initializer]);
+        }
+        return result;
     }
 
     public getTargetFunction(ctx: CompileContext): FunctionType | FunctionEntity {
@@ -61,8 +176,19 @@ export class CallExpression extends Expression {
         let entity: FunctionEntity | null = funcs.length === 0 ? null : funcs[0]!;
 
         if ( ctx.isCpp() ) {
-            entity = doFunctionOverloadResolution(ctx, lookUpResult,
-                this.arguments.map((x) => x.deduceType(ctx)), this);
+            if (this.arguments.some((arg) => arg instanceof InitializerList)) {
+                entity = this.resolveFlexibleOverload(ctx, calleeType);
+            } else {
+                try {
+                    entity = doFunctionOverloadResolution(ctx, lookUpResult,
+                        this.getArgumentTypes(ctx), this);
+                } catch (e) {
+                    entity = this.resolveFlexibleOverload(ctx, calleeType);
+                    if (entity === null) {
+                        throw e;
+                    }
+                }
+            }
         }
 
         if (entity === null ) {
@@ -75,8 +201,13 @@ export class CallExpression extends Expression {
     public generateFunctionBody(ctx: CompileContext, targetFunction: FunctionType | FunctionEntity,
                                 thisPtrs: ExpressionResult[]): [WExpression[], WStatement[]] {
         const funcType = targetFunction instanceof FunctionEntity ? targetFunction.type : targetFunction;
+        const callArguments = this.getPreparedArguments(ctx, new FunctionType(
+            funcType.returnType,
+            funcType.parameterTypes.slice(thisPtrs.length),
+            funcType.variableArguments,
+        ));
         let stackSize = 0;
-        const arguExprTypes = [...thisPtrs.map((x) => x.type), ... this.arguments.map((x) => x.deduceType(ctx))];
+        const arguExprTypes = [...thisPtrs.map((x) => x.type), ... callArguments.map((x) => x.deduceType(ctx))];
         if (funcType.variableArguments) {
             for (let i = arguExprTypes.length - 1; i > funcType.parameterTypes.length - 1; i--) {
                 const src = arguExprTypes[i];
@@ -103,7 +234,7 @@ export class CallExpression extends Expression {
         // compute finish
 
         ctx.memory.currentState.stackPtr -= stackSize;
-        const arguExprs = [...thisPtrs, ... this.arguments.map((x) => x.codegen(ctx))];
+        const arguExprs = [...thisPtrs, ... callArguments.map((x) => x.codegen(ctx))];
         ctx.memory.currentState.stackPtr += stackSize;
 
         if (targetFunction instanceof FunctionEntity && funcType.parameterTypes.length > arguExprs.length) {
@@ -125,6 +256,8 @@ export class CallExpression extends Expression {
 
         const argus: WExpression[] = [];
         let stackOffset = ctx.memory.currentState.stackPtr;
+        const finalStackOffset = ctx.memory.currentState.stackPtr - stackSize;
+        let parameterOffset = 0;
 
         if (funcType.variableArguments) {
             for (let i = arguExprs.length - 1; i > funcType.parameterTypes.length - 1; i--) {
@@ -155,13 +288,15 @@ export class CallExpression extends Expression {
             if (dstType instanceof ClassType) {
                 const rightType = src.type;
                 const leftPtrType = new PointerType(dstType);
-                stackOffset -= getInStackSize(dstType.length);
+                const parameterSize = getInStackSize(dstType.length);
+                stackOffset -= parameterSize;
                 const left = new AnonymousExpression(this.location, {
                     type: leftPtrType,
                     isLeft: false,
-                    expr: new WAddressHolder(stackOffset, AddressType.GLOBAL_SP, this.location)
+                    expr: new WAddressHolder(finalStackOffset + parameterOffset, AddressType.GLOBAL_SP, this.location)
                         .createLoadAddress(ctx),
                 });
+                parameterOffset += parameterSize;
                 const right = new AnonymousExpression(this.location, src);
                 const fullName = dstType.fullName + "::#" + dstType.shortName;
                 let expr: ExpressionResult;
@@ -172,7 +307,7 @@ export class CallExpression extends Expression {
                 } else {
                     const len = dstType.length;
                     expr = new CallExpression(this.location, Identifier.fromString(this.location, "::memcpy"), [
-                        new UnaryExpression(this.location, "&", left),
+                        left,
                         new UnaryExpression(this.location, "&", right),
                         new IntegerConstant(this.location, 10, Long.fromInt(len), len.toString(), null),
                     ]).codegen(ctx);
@@ -213,6 +348,10 @@ export class CallExpression extends Expression {
     }
 
     public codegen(ctx: CompileContext): ExpressionResult {
+        const initializerListMinMax = this.createInitializerListMinMaxExpression(ctx);
+        if (initializerListMinMax !== null) {
+            return initializerListMinMax.codegen(ctx);
+        }
         const targetFunction = this.getTargetFunction(ctx);
         const funcType = targetFunction instanceof FunctionEntity ? targetFunction.type : targetFunction;
         const callee = this.callee.codegen(ctx);
@@ -274,7 +413,17 @@ export class CallExpression extends Expression {
             }
         }
 
-        if (funcType.returnType instanceof ClassType) {
+        if (funcType.returnType instanceof LeftReferenceType
+            && !(funcType.returnType.elementType instanceof ClassType)) {
+            return {
+                type: funcType.returnType.elementType,
+                expr: new WAddressHolder(
+                    funcExpr,
+                    AddressType.RVALUE,
+                    this.location),
+                isLeft: true,
+            };
+        } else if (funcType.returnType instanceof ClassType) {
             return {
                 type: funcType.returnType,
                 expr: new WAddressHolder(
@@ -293,6 +442,10 @@ export class CallExpression extends Expression {
     }
 
     public deduceType(ctx: CompileContext): Type {
+        const initializerListMinMax = this.createInitializerListMinMaxExpression(ctx);
+        if (initializerListMinMax !== null) {
+            return initializerListMinMax.deduceType(ctx);
+        }
         const targetFunction = this.getTargetFunction(ctx);
         if (targetFunction instanceof FunctionEntity) {
             return targetFunction.type.returnType;

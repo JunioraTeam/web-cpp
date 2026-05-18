@@ -2,6 +2,7 @@ import {ClassSpecifier} from "../codegen/class/class_specifier";
 import {FunctionConfig} from "../codegen/function/function";
 import {FunctionDefinition} from "../codegen/function/function_definition";
 import {ScopeContext} from "../codegen/scope";
+import {TypeName} from "../codegen/class/type_name";
 import {AccessControl, Type} from "../type";
 import {ClassType} from "../type/class_type";
 import {TemplateType} from "../type/template_type";
@@ -72,6 +73,35 @@ export class ClassTemplate extends Symbol {
         this.fileName = fileName;
         this.fullName = fullName;
         this.specializationMap = new Map<string, ClassSpecifier>();
+        this.scopeContext = scopeContext;
+    }
+
+    public getType(): Type {
+        return TemplateType.instance;
+    }
+
+    public isDefine(): boolean {
+        return true;
+    }
+}
+
+export class AliasTemplate extends Symbol {
+    public shortName: string;
+    public fullName: string;
+    public fileName: string;
+    public templateParams: TemplateParameter[];
+    public typeName: TypeName;
+    public scopeContext: ScopeContext;
+
+    constructor(shortName: string, fullName: string, fileName: string,
+                templateParams: TemplateParameter[], typeName: TypeName,
+                scopeContext: ScopeContext, accessControl: AccessControl) {
+        super(accessControl);
+        this.shortName = shortName;
+        this.fullName = fullName;
+        this.fileName = fileName;
+        this.templateParams = templateParams;
+        this.typeName = typeName;
         this.scopeContext = scopeContext;
     }
 

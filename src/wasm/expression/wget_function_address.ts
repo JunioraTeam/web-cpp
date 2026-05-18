@@ -12,7 +12,7 @@ export class WGetFunctionAddress extends WExpression {
     }
 
     public emit(e: Emitter): void {
-        e.emitIns(I32.const, WType.u32, e.ctx.getFuncInfo(this.name).id, this.location);
+        e.emitIns(I32.const, WType.i32, e.ctx.getFuncInfo(this.name).id, this.location);
     }
 
     public deduceType(e: Emitter): WType {

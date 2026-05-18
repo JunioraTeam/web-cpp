@@ -13,6 +13,19 @@ import {FunctionLookUpResult, Scope} from "../scope";
 import {CompoundStatement} from "../statement/compound_statement";
 import {declareFunction, defineFunction, FunctionConfig} from "./function";
 
+function findScopeByFullName(scope: Scope, fullName: string): Scope | null {
+    if (scope.fullName === fullName) {
+        return scope;
+    }
+    for (const child of scope.children) {
+        const result = findScopeByFullName(child, fullName);
+        if (result !== null) {
+            return result;
+        }
+    }
+    return null;
+}
+
 export class FunctionDefinition extends ClassDirective {
     public specifiers: SpecifierList;
     public declarator: Declarator;
@@ -84,6 +97,8 @@ export class FunctionDefinition extends ClassDirective {
             if (classType.getVCallInfo(vcallSigature) !== null) {
                 functionType.isVirtual = true;
                 classType.registerVFunction(ctx, vcallSigature, fullName);
+            } else if (functionDeclarator.isOverride) {
+                throw new SyntaxError(`${name.getShortName(ctx)} marked override but does not override`, this);
             }
         }
         if (new Set<string>(parameterNames).size !== parameterNames.length) {
@@ -108,6 +123,22 @@ export class FunctionDefinition extends ClassDirective {
         const name = this.declarator.getNameRequired();
         const fullName = name.getFullName(ctx);
         const scope = ctx.scopeManager.root.getScopeOfLookupName(fullName);
+        const ownerName = fullName.split("::").slice(0, -1).join("::");
+        const ownerScope = ownerName ? findScopeByFullName(ctx.scopeManager.root, ownerName) : null;
+        if (ctx.scopeManager.currentContext.scope.classType === null && ownerScope && ownerScope.classType !== null) {
+            ctx.scopeManager.enterScope(ownerScope.fullName);
+            const classType = ownerScope.classType;
+            const config = this.getMemberFunctionConfig(ctx, classType);
+            config.name = name.getShortName(ctx);
+            const oldItem = ctx.scopeManager.getOldOverloadSymbol(
+                ownerScope.fullName + "::" + config.name + "@" + config.functionType.toMangledName());
+            const activeScopes = (oldItem && oldItem instanceof FunctionEntity)
+                ? oldItem.declareActiveScopes : ctx.scopeManager.currentContext.activeScopes;
+            config.accessControl = AccessControl.Unknown;
+            defineFunction(ctx, config, this.body.body, activeScopes, this);
+            ctx.scopeManager.exitScope();
+            return;
+        }
         if (!scope) {
             throw new SyntaxError(`unresolvedname ${fullName}`, this);
         }
@@ -116,7 +147,7 @@ export class FunctionDefinition extends ClassDirective {
             const oldItem = ctx.scopeManager.getOldOverloadSymbol(
                 fullName + "@" + config.functionType.toMangledName());
             const activeScopes = (oldItem && oldItem instanceof FunctionEntity)
-                ? oldItem.declareActiveScopes : [];
+                ? oldItem.declareActiveScopes : ctx.scopeManager.currentContext.activeScopes;
             defineFunction(ctx, config, this.body.body, activeScopes, this);
         } else {
             const classType = scope.classType;
@@ -124,7 +155,7 @@ export class FunctionDefinition extends ClassDirective {
             const oldItem = ctx.scopeManager.getOldOverloadSymbol(
                 fullName + "@" + config.functionType.toMangledName());
             const activeScopes = (oldItem && oldItem instanceof FunctionEntity)
-                ? oldItem.declareActiveScopes : [];
+                ? oldItem.declareActiveScopes : ctx.scopeManager.currentContext.activeScopes;
             config.accessControl = AccessControl.Unknown;
             defineFunction(ctx, config, this.body.body, activeScopes, this);
         }

@@ -21,7 +21,15 @@ export interface Position {
 
 export enum PreprocessStatus {
     ON_IF,
+    ON_ELIF,
     ON_ELSE,
+}
+
+export interface PreprocessConditionalStatus {
+    status: PreprocessStatus;
+    parentSkipBlock: boolean;
+    branchMatched: boolean;
+    skipBlock: boolean;
 }
 
 export class PreprocessContext {
@@ -30,7 +38,8 @@ export class PreprocessContext {
     public generatedFileName: string;
     public marcoMap: Map<string, Marco>;
     public skipBlock: boolean;
-    public status: Array<[PreprocessStatus, boolean]>;
+    public status: PreprocessConditionalStatus[];
+    public sourceLineOffset: number;
     public targetLine: number;
     public targetColumn: number;
     public onMultiLineComment: boolean;
@@ -42,6 +51,7 @@ export class PreprocessContext {
         this.marcoMap = marcoMap;
         this.skipBlock = false;
         this.status = [];
+        this.sourceLineOffset = 0;
         this.targetLine = 0;
         this.targetColumn = 0;
         this.onMultiLineComment = false;
@@ -71,8 +81,19 @@ export class PreprocessContext {
 
     public append(str: string, sourceStartPosition: Position) {
         this.node.add(new SourceNode(
-            sourceStartPosition.line + 1,
+            sourceStartPosition.line + this.sourceLineOffset + 1,
             sourceStartPosition.column,
             this.sourceFileName, str));
+    }
+
+    public getLogicalLine(sourceLine: number) {
+        return sourceLine + this.sourceLineOffset + 1;
+    }
+
+    public setLine(nextSourceLine: number, logicalLine: number, sourceFileName?: string) {
+        this.sourceLineOffset = logicalLine - 1 - nextSourceLine;
+        if (sourceFileName) {
+            this.sourceFileName = sourceFileName;
+        }
     }
 }

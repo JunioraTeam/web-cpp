@@ -11,9 +11,15 @@ import {BinaryExpression} from "../expression/binary_expression";
 import {Expression, recycleExpressionResult} from "../expression/expression";
 import {Identifier} from "../expression/identifier";
 import {IntegerConstant} from "../expression/integer_constant";
+import {SubscriptExpression} from "../expression/subscript_expression";
 import {UnaryExpression} from "../expression/unary_expression";
+import {CallExpression} from "../function/call_expression";
+import {MemberExpression} from "../class/member_expression";
 import {CompoundStatement} from "./compound_statement";
+import {emitLoopTick} from "./loop_guard";
 import {Statement} from "./statement";
+
+let rangeForIndex = 0;
 
 export class ForStatement extends Statement {
     public init: Expression | Declaration | null;
@@ -72,6 +78,7 @@ export class ForStatement extends Statement {
             condition.type = PrimitiveTypes.int32;
             ctx.submitStatement(new WBrIf(1, condition.expr.fold(), this.location));
         }
+        emitLoopTick(ctx, this.location);
         ctx.submitStatement(new WBlock(innerBlockStatements, this.location));
         if (this.update !== null) {
             recycleExpressionResult(ctx, this, this.update.codegen(ctx));
@@ -86,6 +93,62 @@ export class ForStatement extends Statement {
         ctx.exitScope(this);
         ctx.setStatementContainer(savedContainer);
         ctx.submitStatement(new WBlock(outerBlockStatements, this.location));
+    }
+}
+
+export class RangeForStatement extends Statement {
+    public declaration: Declaration;
+    public range: Expression;
+    public body: Statement;
+
+    constructor(location: SourceLocation, declaration: Declaration, range: Expression, body: Statement) {
+        super(location);
+        this.declaration = declaration;
+        this.range = range;
+        this.body = body;
+    }
+
+    public codegen(ctx: CompileContext) {
+        if (this.declaration.initDeclarators.length !== 1) {
+            throw new Error("range-for declaration must declare exactly one variable");
+        }
+
+        const loopIndex = rangeForIndex++;
+        const iter = Identifier.fromString(this.location, `__range_for_it_${loopIndex}`);
+        const end = Identifier.fromString(this.location, `__range_for_end_${loopIndex}`);
+        const itemDeclarator = this.declaration.initDeclarators[0].declarator;
+        const item = new Declaration(this.declaration.location, this.declaration.specifiers, [
+            new InitDeclarator(this.declaration.location, itemDeclarator,
+                new UnaryExpression(this.location, "*", iter)),
+        ]);
+        const body = this.body instanceof CompoundStatement
+            ? new CompoundStatement(this.body.location, [item, ...this.body.body])
+            : new CompoundStatement(this.body.location, [item, this.body]);
+
+        const beginExpr = new CallExpression(this.location,
+            new MemberExpression(this.location, this.range, false,
+                Identifier.fromString(this.location, "begin")),
+            []);
+        const endExpr = new CallExpression(this.location,
+            new MemberExpression(this.location, this.range, false,
+                Identifier.fromString(this.location, "end")),
+            []);
+        const iterDecl = new Declaration(this.location, new SpecifierList(this.location, ["auto"]), [
+            new InitDeclarator(this.location, new IdentifierDeclarator(this.location, iter), beginExpr),
+        ]);
+        const endDecl = new Declaration(this.location, new SpecifierList(this.location, ["auto"]), [
+            new InitDeclarator(this.location, new IdentifierDeclarator(this.location, end), endExpr),
+        ]);
+
+        new CompoundStatement(this.location, [
+            iterDecl,
+            endDecl,
+            new ForStatement(this.location,
+                null,
+                new BinaryExpression(this.location, "!=", iter, end),
+                new UnaryExpression(this.location, "++", iter),
+                body),
+        ]).codegen(ctx);
     }
 }
 

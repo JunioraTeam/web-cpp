@@ -1,5 +1,5 @@
 import {InternalError, SyntaxError, TypeError} from "../../common/error";
-import {SourceLocation} from "../../common/node";
+import {Node, Position, SourceLocation} from "../../common/node";
 import {Type} from "../../type";
 import {ClassType} from "../../type/class_type";
 import {PointerType} from "../../type/compound_type";
@@ -11,6 +11,7 @@ import {arithmeticDeduce, doConversion, doTypeTransfrom, doValueTransform} from 
 import {CallExpression} from "../function/call_expression";
 import {Expression, ExpressionResult, recycleExpressionResult} from "./expression";
 import {Identifier} from "./identifier";
+import {UnaryExpression} from "./unary_expression";
 export class BinaryExpression extends Expression {
     public operator: string;
     // + - * / % & | && || < > <= >= == !=
@@ -35,14 +36,15 @@ export class BinaryExpression extends Expression {
             return this.right.codegen(ctx);
         }
 
-        const leftType = this.left.deduceType(ctx);
-        const rightType = this.right.deduceType(ctx);
+        const leftType = doTypeTransfrom(this.left.deduceType(ctx));
+        const rightType = doTypeTransfrom(this.right.deduceType(ctx));
+
+        if (this.isPairComparison(leftType, rightType)) {
+            return this.createPairComparisonExpression().codegen(ctx);
+        }
 
         if (leftType instanceof ClassType) {
-            return new CallExpression(this.location,
-                new MemberExpression(this.location, this.left, false,
-                    Identifier.fromString(this.location, "#" + this.operator)),
-                [this.right]).codegen(ctx);
+            return this.createOperatorCall(ctx, leftType, rightType).codegen(ctx);
         }
 
         if (rightType instanceof ClassType) {
@@ -53,6 +55,22 @@ export class BinaryExpression extends Expression {
         let right = this.right.codegen(ctx);
 
         const dstType = this.deduceType(ctx);
+        if (this.operator === "-"
+            && leftType instanceof PointerType
+            && rightType instanceof PointerType) {
+            left = doValueTransform(ctx, left, this);
+            right = doValueTransform(ctx, right, this);
+            const leftExpr = left.expr;
+            const rightExpr = right.expr;
+            const byteDiff = new WBinaryOperation(I32Binary.sub, leftExpr, rightExpr, this.location);
+            return {
+                type: PrimitiveTypes.int32,
+                isLeft: false,
+                expr: new WBinaryOperation(I32Binary.div_s, byteDiff,
+                    new WConst(WType.i32, leftType.elementType.length.toString(), this.location),
+                    this.location),
+            };
+        }
         const op = getOpFromStr(this.operator, dstType.toWType());
 
         if (op === null) {
@@ -79,8 +97,30 @@ export class BinaryExpression extends Expression {
             }
         }
 
-        let leftExpr = doConversion(ctx, dstType, left, this);
-        let rightExpr = doConversion(ctx, dstType, right, this);
+        let operandType = dstType;
+        if ([">=", "<=", ">", "<", "==", "!="].includes(this.operator)) {
+            if (leftType instanceof ArithmeticType && rightType instanceof ArithmeticType) {
+                operandType = arithmeticDeduce(leftType, rightType);
+            } else if (leftType instanceof PointerType && rightType instanceof PointerType) {
+                operandType = leftType;
+            }
+        }
+        if (leftType instanceof PointerType && rightType instanceof PointerType) {
+            operandType = PrimitiveTypes.int32;
+        }
+
+        let leftExpr;
+        let rightExpr;
+        if (operandType === PrimitiveTypes.int32
+            && leftType instanceof PointerType && rightType instanceof PointerType) {
+            left = doValueTransform(ctx, left, this);
+            right = doValueTransform(ctx, right, this);
+            leftExpr = left.expr;
+            rightExpr = right.expr;
+        } else {
+            leftExpr = doConversion(ctx, operandType, left, this);
+            rightExpr = doConversion(ctx, operandType, right, this);
+        }
 
         if (this.operator === "&&" || this.operator === "||") {
             leftExpr = new WBinaryOperation(I32Binary.ne, leftExpr,
@@ -105,11 +145,12 @@ export class BinaryExpression extends Expression {
         const left = doTypeTransfrom(this.left.deduceType(ctx));
         const right = doTypeTransfrom(this.right.deduceType(ctx));
 
+        if (this.isPairComparison(left, right)) {
+            return PrimitiveTypes.bool;
+        }
+
         if (left instanceof ClassType) {
-            return new CallExpression(this.location,
-                new MemberExpression(this.location, this.left, false,
-                    Identifier.fromString(this.location, "#" + this.operator)),
-                [this.right]).deduceType(ctx);
+            return this.createOperatorCall(ctx, left, right).deduceType(ctx);
         }
 
         if ("+-*%/".includes(this.operator)) {
@@ -117,6 +158,9 @@ export class BinaryExpression extends Expression {
                 return arithmeticDeduce(left, right);
             } else if (left instanceof PointerType || right instanceof PointerType) {
                 if (left instanceof PointerType && right instanceof PointerType) {
+                    if (this.operator === "-") {
+                        return PrimitiveTypes.int32;
+                    }
                     throw new TypeError(`could not apply ope on two pointer`, this);
                 }
                 if (left instanceof PointerType) {
@@ -158,6 +202,97 @@ export class BinaryExpression extends Expression {
             return this.right.deduceType(ctx);
         }
         throw new InternalError(`no impl at BinaryExpression()`);
+    }
+
+    private createOperatorCall(ctx: CompileContext, leftType: ClassType, rightType: Type) {
+        const memberName = "#" + this.operator;
+        if (leftType.getMember(ctx, memberName) === null) {
+            throw new SyntaxError(`no match for 'operator${this.operator}' (operand types are `
+                + `'${leftType.toString()}' and '${rightType.toString()}')`, {
+                location: this.getOperatorLocation(),
+            } as Node);
+        }
+        return new CallExpression(this.location,
+            new MemberExpression(this.location, this.left, false,
+                Identifier.fromString(this.location, memberName)),
+            [this.right]);
+    }
+
+    private isPairComparison(leftType: Type, rightType: Type): boolean {
+        return leftType instanceof ClassType
+            && rightType instanceof ClassType
+            && leftType.shortName.split("<")[0] === "pair"
+            && rightType.shortName.split("<")[0] === "pair"
+            && ["==", "!=", "<", ">", "<=", ">="].includes(this.operator);
+    }
+
+    private member(object: Expression, name: string): MemberExpression {
+        return new MemberExpression(this.location, object, false, Identifier.fromString(this.location, name));
+    }
+
+    private createPairLessExpression(left: Expression, right: Expression): Expression {
+        const leftFirst = this.member(left, "first");
+        const leftSecond = this.member(left, "second");
+        const rightFirst = this.member(right, "first");
+        const rightSecond = this.member(right, "second");
+        return new BinaryExpression(this.location, "||",
+            new BinaryExpression(this.location, "<", leftFirst, rightFirst),
+            new BinaryExpression(this.location, "&&",
+                new UnaryExpression(this.location, "!",
+                    new BinaryExpression(this.location, "<", rightFirst, leftFirst)),
+                new BinaryExpression(this.location, "<", leftSecond, rightSecond)));
+    }
+
+    private createPairEqualExpression(): Expression {
+        return new BinaryExpression(this.location, "&&",
+            new BinaryExpression(this.location, "==",
+                this.member(this.left, "first"), this.member(this.right, "first")),
+            new BinaryExpression(this.location, "==",
+                this.member(this.left, "second"), this.member(this.right, "second")));
+    }
+
+    private createPairComparisonExpression(): Expression {
+        if (this.operator === "==") {
+            return this.createPairEqualExpression();
+        }
+        if (this.operator === "!=") {
+            return new UnaryExpression(this.location, "!", this.createPairEqualExpression());
+        }
+        if (this.operator === "<") {
+            return this.createPairLessExpression(this.left, this.right);
+        }
+        if (this.operator === ">") {
+            return this.createPairLessExpression(this.right, this.left);
+        }
+        if (this.operator === "<=") {
+            return new UnaryExpression(this.location, "!",
+                this.createPairLessExpression(this.right, this.left));
+        }
+        if (this.operator === ">=") {
+            return new UnaryExpression(this.location, "!",
+                this.createPairLessExpression(this.left, this.right));
+        }
+        throw new InternalError(`invalid pair comparison operator ${this.operator}`);
+    }
+
+    private getOperatorLocation() {
+        const source = this.location.source || "";
+        const index = source.indexOf(this.operator);
+        const prefix = index >= 0 ? source.substring(0, index) : "";
+        let line = this.location.start.line;
+        let column = this.location.start.column;
+        for (const ch of prefix) {
+            if (ch === "\n") {
+                line++;
+                column = 0;
+            } else {
+                column++;
+            }
+        }
+        const offset = this.location.start.offset + prefix.length;
+        return new SourceLocation(this.location.fileName, this.operator,
+            new Position(offset, line, column),
+            new Position(offset + this.operator.length, line, column + this.operator.length));
     }
 
 }

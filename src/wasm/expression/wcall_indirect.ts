@@ -23,7 +23,7 @@ export class WCallIndirect extends WExpression {
     public emit(e: Emitter): void {
         this.argument.map((x) => x.emit(e));
         this.target.emit(e);
-        e.emitIns(Control.call_indirect, WType.u8, e.ctx.getTypeIdxFromEncoding(this.typeEncoding),
+        e.emitIns(Control.call_indirect, WType.u32, e.ctx.getTypeIdxFromEncoding(this.typeEncoding),
             this.location);
         e.writeByte(0x00);
         this.afterStatements.map((x) => x.emit(e));

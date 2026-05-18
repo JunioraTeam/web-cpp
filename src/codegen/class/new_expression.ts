@@ -2,7 +2,7 @@ import {LanguageError, SyntaxError} from "../../common/error";
 import {SourceLocation} from "../../common/node";
 import {Type} from "../../type";
 import {ClassType} from "../../type/class_type";
-import {PointerType} from "../../type/compound_type";
+import {ArrayType, PointerType} from "../../type/compound_type";
 import {PrimitiveTypes} from "../../type/primitive_type";
 import {CompileContext} from "../context";
 import {ArrayDeclarator} from "../declaration/array_declarator";
@@ -16,6 +16,7 @@ import {CallExpression} from "../function/call_expression";
 import {ExpressionStatement} from "../statement/expression_statement";
 import {getForLoop} from "../statement/for_statement";
 import {TypeName} from "./type_name";
+import {WAddressHolder} from "../address";
 
 export class NewExpression extends Expression {
     public name: TypeName;
@@ -57,12 +58,19 @@ export class NewExpression extends Expression {
                 Identifier.fromString(this.location, sizeVarName), this.arraySize).codegen(ctx);
             recycleExpressionResult(ctx, this, assignSizeExpr);
 
-            // headPtr = (int *) malloc(size + 4)
-            const mallocExpr = new CallExpression(this.location, Identifier.fromString(this.location, "::malloc_array"),
-                [
-                    sizeExpr,
-                    Identifier.fromString(this.location, sizeVarName),
-                ]).codegen(ctx);
+            const initStorage = this.placement === null
+                ? new CallExpression(this.location, Identifier.fromString(this.location, "::malloc_array"),
+                    [
+                        sizeExpr,
+                        Identifier.fromString(this.location, sizeVarName),
+                    ])
+                : this.placement;
+            const mallocExpr = initStorage.codegen(ctx);
+            if (this.placement !== null && mallocExpr.isLeft && mallocExpr.type instanceof ArrayType
+                && mallocExpr.expr instanceof WAddressHolder) {
+                mallocExpr.expr = mallocExpr.expr.createLoadAddress(ctx);
+                mallocExpr.isLeft = false;
+            }
             mallocExpr.type = ptrType;
 
             const assignExpr = new AssignmentExpression(this.location, "=",
@@ -81,8 +89,16 @@ export class NewExpression extends Expression {
                                 i)]))]), this).codegen(ctx);
             }
         } else {
-            const mallocExpr = new CallExpression(this.location, Identifier.fromString(this.location, "::malloc"),
-                [IntegerConstant.fromNumber(this.location, itemType.length)]).codegen(ctx);
+            const initStorage = this.placement === null
+                ? new CallExpression(this.location, Identifier.fromString(this.location, "::malloc"),
+                    [IntegerConstant.fromNumber(this.location, itemType.length)])
+                : this.placement;
+            const mallocExpr = initStorage.codegen(ctx);
+            if (this.placement !== null && mallocExpr.isLeft && mallocExpr.type instanceof ArrayType
+                && mallocExpr.expr instanceof WAddressHolder) {
+                mallocExpr.expr = mallocExpr.expr.createLoadAddress(ctx);
+                mallocExpr.isLeft = false;
+            }
             mallocExpr.type = ptrType;
             const assignExpr = new AssignmentExpression(this.location, "=",
                 Identifier.fromString(this.location, ptrVarName),

@@ -43,7 +43,21 @@ export class CompilerError extends Error {
     }
 
     public toString() {
-        return `${this.name}: ${this.message} at ${this.location.start.line}:${this.location.start.column}`;
+        const fileName = this.location.fileName ? `${this.location.fileName}:` : "";
+        const line = this.location.start.line || "?";
+        const column = this.location.start.column == null ? "?" : this.getDisplayColumn();
+        return `${this.name}: ${this.message} at ${fileName}${line}:${column}`;
+    }
+
+    private getDisplayColumn() {
+        if (!this.errorLine) {
+            return this.location.start.column + 1;
+        }
+        let column = 1;
+        for (let i = 0; i < this.location.start.column && i < this.errorLine.length; i++) {
+            column += this.errorLine.charAt(i) === "\t" ? 8 - ((column - 1) % 8) : 1;
+        }
+        return column;
     }
 }
 

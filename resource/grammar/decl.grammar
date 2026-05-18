@@ -26,7 +26,7 @@ BlockDeclarationList
     }
 
 NamespaceDefinition
-    = 'namespace' _ name:Identifier _ '{' _ list:DeclarationList? _'}'{
+    = 'namespace' _ name:(Identifier / TypeIdentifier) _ '{' _ list:DeclarationList? _'}'{
         currScope.names.set(name.getLastID().name, TYPE_NAME);
         return new AST.NameSpaceBlock(getLocation(), name, list || []);
     }
@@ -87,6 +87,8 @@ Declarator
 DirectDeclarator
     = head:(identifier:Identifier {
         return new AST.IdentifierDeclarator(getLocation(), identifier);
+    } / '[' _ identifiers:IdentifierList _ &!']' {
+        return new AST.StructuredBindingDeclarator(getLocation(), identifiers);
     } / '(' _ declarator:Declarator _ ')' {
         return declarator;
     } ) tail:(_ (
@@ -97,15 +99,29 @@ DirectDeclarator
                 arguments: [false, [], length, false]
             };
         }
-        / '(' _ parameters: ParameterList? _ ')' {
+        / '(' _ parameters: ParameterList? _ ')' _ qualifiers:MemberFunctionQualifierList? {
             return {
                 location: getLocation(),
                 type: AST.FunctionDeclarator,
-                arguments: [parameters || new AST.ParameterList(getLocation())]
+                arguments: [
+                    parameters || new AST.ParameterList(getLocation()),
+                    qualifiers ? qualifiers.indexOf('const') !== -1 : false,
+                    qualifiers ? qualifiers.indexOf('override') !== -1 : false
+                ]
             }
         }
     ))* {
         return extractList(tail, 1).reduce((result, element) => new element.type(element.location, result, ...element.arguments), head);
+    }
+
+MemberFunctionQualifierList
+    = head:MemberFunctionQualifier tail:(_ MemberFunctionQualifier)* {
+        return buildList(head, tail, 1);
+    }
+
+MemberFunctionQualifier
+    = ('const' / 'override') !IdentifierPart {
+        return text();
     }
 
 Pointer

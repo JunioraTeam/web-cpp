@@ -111,6 +111,16 @@ describe('instruction integration test', function () {
         const expectOutput = `142`;
         return await TestBase.testRunCompareResult(testCode, expectOutput);
     });
+    it('null statement', async function() {
+        const testCode = `
+        int main()
+        {
+            if (7 == 7);
+        }
+        `;
+        const expectOutput = ``;
+        return await TestBase.testFullCode(testCode, expectOutput);
+    });
     it('while',async function() {
         const testCode = `
         int i = 1;

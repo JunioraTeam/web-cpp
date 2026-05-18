@@ -7,7 +7,7 @@
 import {InternalError, SyntaxError} from "../common/error";
 import {Node} from "../common/node";
 import {FunctionEntity, OverloadSymbol, Symbol, Variable} from "../common/symbol";
-import {ClassTemplate, FunctionTemplate} from "../common/template";
+import {AliasTemplate, ClassTemplate, FunctionTemplate} from "../common/template";
 import {AccessControl, Type} from "../type";
 import {ClassType} from "../type/class_type";
 import {WAddressHolder} from "./address";
@@ -29,7 +29,7 @@ export class FunctionLookUpResult {
     }
 }
 
-export type LookUpResult = Variable | Type | FunctionLookUpResult | ClassTemplate | null;
+export type LookUpResult = Variable | Type | FunctionLookUpResult | ClassTemplate | AliasTemplate | null;
 
 export function getShortName(lookupName: string): string {
     const tokens = lookupName.split("::");
@@ -146,11 +146,23 @@ export class Scope {
                     throw new SyntaxError(`${shortName} has been declared as type`
                         + `but a ${newItem.constructor.name} found`, node);
                 }
-            } else if (oldItem instanceof ClassTemplate) {
+            } else if (oldItem instanceof ClassTemplate || oldItem instanceof AliasTemplate) {
                 if (newItem.isDefine() && oldItem.isDefine()) {
                     throw new SyntaxError(`redefine of ${shortName}`, node);
                 }
-                if (newItem instanceof ClassTemplate) {
+                if (oldItem instanceof AliasTemplate) {
+                    if (!(newItem instanceof AliasTemplate)) {
+                        throw new SyntaxError(`conflict declaration of ${shortName}`, node);
+                    }
+                    if (newItem.isDefine()) {
+                        oldItems[0] = newItem;
+                    }
+                    return;
+                }
+                if (oldItem instanceof ClassTemplate) {
+                    if (!(newItem instanceof ClassTemplate)) {
+                        throw new SyntaxError(`conflict declaration of ${shortName}`, node);
+                    }
                     if (oldItem.templateParams.length !== newItem.templateParams.length) {
                         throw new SyntaxError(`conflict declaration of ${shortName}`, node);
                     }
@@ -163,10 +175,9 @@ export class Scope {
                         oldItems[0] = newItem;
                     }
                     return;
-                } else {
-                    throw new SyntaxError(`${shortName} has been declared as class template`
-                        + `but a ${newItem.constructor.name} found`, node);
                 }
+                throw new SyntaxError(`${shortName} has been declared as template`
+                    + `but a ${newItem.constructor.name} found`, node);
             }
         }
         throw new InternalError(`assertCompatible()`);
@@ -290,7 +301,7 @@ export class ScopeManager {
             const itemScope = scope.getScopeOfLookupName(restrictLookupName);
             const shortName = getShortName(restrictLookupName);
             if (itemScope && itemScope.map.has(shortName)) {
-                scope.mergeSymbolInScope(shortName, symbol, node);
+                itemScope.mergeSymbolInScope(shortName, symbol, node);
                 return;
             }
             throw new SyntaxError(`unresolved name ${lookupName}`, node);
@@ -298,8 +309,8 @@ export class ScopeManager {
             for (const scope of this.currentContext.activeScopes) {
                 const itemScope = scope.getScopeOfLookupName(lookupName);
                 const shortName = getShortName(lookupName);
-                if (itemScope && itemScope.map.has(shortName)) {
-                    scope.mergeSymbolInScope(shortName, symbol, node);
+                if (itemScope && (itemScope.map.has(shortName) || symbol instanceof Type)) {
+                    itemScope.mergeSymbolInScope(shortName, symbol, node);
                     return;
                 }
             }
@@ -321,7 +332,7 @@ export class ScopeManager {
             const itemScope = scope.getScopeOfLookupName(restrictLookupName);
             const shortName = getShortName(restrictLookupName);
             if (itemScope && itemScope.map.has(shortName)) {
-                scope.mergeSymbolInScope(shortName, symbol, node);
+                itemScope.mergeSymbolInScope(shortName, symbol, node);
                 return;
             }
             throw new SyntaxError(`unresolved name ${lookupName}`, node);
@@ -329,8 +340,8 @@ export class ScopeManager {
             for (const scope of this.currentContext.activeScopes) {
                 const itemScope = scope.getScopeOfLookupName(lookupName);
                 const shortName = getShortName(lookupName);
-                if (itemScope && itemScope.map.has(shortName)) {
-                    scope.mergeSymbolInScope(shortName, symbol, node);
+                if (itemScope && (itemScope.map.has(shortName) || symbol instanceof Type)) {
+                    itemScope.mergeSymbolInScope(shortName, symbol, node);
                     return;
                 }
             }

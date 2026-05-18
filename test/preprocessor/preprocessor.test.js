@@ -64,4 +64,27 @@ describe('preprocessor', function(){
             parseMarco(["foo", "luu", "goo"], "foo#goo luu"),
             [ 0,"\"", 2, '\" ', 1 ]);
     });
+
+    it('supports #if, #elif, #line, __LINE__, and __FILE__', function() {
+        const {code} = preprocess("main.cpp", `
+#define FLAG 2
+#if 0
+skip0
+#elif defined(FLAG) && FLAG == 2
+keep
+#else
+skip1
+#endif
+#line 40 "logical.cpp"
+__LINE__ __FILE__
+#define LOC __LINE__, __FILE__
+LOC
+`);
+        assert.equal(code, `
+keep
+40 "logical.cpp"
+42, "logical.cpp"
+
+`);
+    });
 });

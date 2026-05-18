@@ -58,6 +58,9 @@ ExpressionStatement
         return expression ? new AST.ExpressionStatement(getLocation(), extractOptional(expression, 0))
                 : new AST.NullStatement(getLocation());
     }
+    / Expression _ BinaryOperator _ token:$[;)] {
+        error("expected primary-expression before '" + token + "' token", getEndTokenLocation(token));
+    }
 
 SelectionStatement
     = 'if' !IdentifierPart _ &!'(' _ test:Expression _ &!')' _ consequent:Statement alternate:(_ 'else' !IdentifierPart _ Statement)? {
@@ -74,12 +77,22 @@ IterationStatement
     / 'do' !IdentifierPart _ body:Statement _ 'while' !IdentifierPart _ &!'(' _ test:Expression _ &!')' _ &!';' {
         return new AST.DoWhileStatement(getLocation(), body, test);
     }
+    / 'for' !IdentifierPart _ &!'(' _ decl:RangeForDeclaration _ ':' _ range:Expression _ &!')' _ body:Statement {
+        return new AST.RangeForStatement(getLocation(), decl, range, body);
+    }
     / 'for' !IdentifierPart _ &!'(' _ init:(Declaration / expression:Expression? _ ';' {
         return expression;
     } / (DeclarationWithoutSemicolon / Expression) {
         error('Missing \\';\\'');
     }) _ test:Expression? _ &!';' _ update:Expression? _ &!')' _ body:Statement {
         return new AST.ForStatement(getLocation(), init, test, update, body);
+    }
+
+RangeForDeclaration
+    = specifiers:DeclarationSpecifiers _ declarator:Declarator {
+        return new AST.Declaration(getLocation(), specifiers, [
+            new AST.InitDeclarator(getLocation(), declarator, null)
+        ]);
     }
 
 JumpStatement
@@ -100,6 +113,7 @@ JumpStatement
 UsingStatements
     = 'using' _ name:Identifier _ '=' _ decl:TypeName _ ';'{
         currScope.names.set(name.getLastID().name, TYPE_NAME);
+        globalMap.set(name.getLastID().name, TYPE_NAME);
         return new AST.UsingStatement(getLocation(), name, decl);
     }
     / 'using' _ name:(Identifier/TypeIdentifier/TemplateClassIdentifier/TemplateFuncIdentifier) _ ';'{

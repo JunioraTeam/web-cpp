@@ -81,14 +81,17 @@ _ = WhiteSpace*
 
 Keyword
     = ('auto'
+    / 'bool'
     / 'break'
     / 'case'
     / 'char'
+    / 'const_cast'
     / 'const'
     / 'continue'
     / 'default'
     / 'double'
     / 'do'
+    / 'dynamic_cast'
     / 'else'
     / 'enum'
     / 'extern'
@@ -119,10 +122,16 @@ Keyword
     / 'delete'
     / 'operator'
     / 'override'
+    / 'private'
+    / 'protected'
+    / 'public'
+    / 'reinterpret_cast'
     / 'template'
     / 'typename'
     / 'namespace'
-    / 'using') !IdentifierPart
+    / 'using'
+    / 'virtual'
+    / 'static_cast') !IdentifierPart
 
 StorageClassSpecifier
     = ('typedef'
@@ -149,10 +158,11 @@ PrimitiveTypeSpecifier
      }
 
 OverloadOperator
-    = '+' / '-' / '*' / '/' / '%' / '&' / '<' / '>' / '<=' / '>=' / '==' / '!='
-    / '|' / '^' / '!' / '~' / '&&' / '||' / '>>' / '<<' / '++' / '--'
-    /'()' / '[]' / '->'
-    / AssignmentOperator
+    = AssignmentOperator
+    / '<<=' / '>>=' / '<=' / '>=' / '==' / '!=' / '&&' / '||' / '>>' / '<<' / '++' / '--'
+    / '+' / '-' / '*' / '/' / '%' / '&' / '<' / '>'
+    / '|' / '^' / '!' / '~'
+    / '()' / '[]' / '->'
 
 AssignmentOperator
     = '=' !'=' {
@@ -168,6 +178,11 @@ AssignmentOperator
     / '&='
     / '^='
     / '|='
+
+BinaryOperator
+    = '<<=' / '>>=' / '<=' / '>=' / '==' / '!=' / '&&' / '||' / '>>' / '<<'
+    / '*=' / '/=' / '%=' / '+=' / '-=' / '&=' / '^=' / '|='
+    / '+' / '-' / '*' / '/' / '%' / '&' / '<' / '>' / '|' / '^'
 
 AndAnd
     = '&&'

@@ -1,0 +1,60 @@
+#ifndef _CPP_NUMERIC
+#define _CPP_NUMERIC
+
+namespace std {
+
+template<typename NumericIteratorT, typename NumericValueT>
+NumericValueT accumulate(NumericIteratorT *first, NumericIteratorT *last, NumericValueT init) {
+    while (first != last) {
+        init = init + *first;
+        first = first + 1;
+    }
+    return init;
+}
+
+int accumulate(int *first, int *last, int init, int (*binary_op)(int, int)) {
+    while (first != last) {
+        init = binary_op(init, *first);
+        first = first + 1;
+    }
+    return init;
+}
+
+template<typename PartialSumInputT, typename PartialSumOutputT>
+PartialSumOutputT *partial_sum(PartialSumInputT *first, PartialSumInputT *last, PartialSumOutputT *result) {
+    if (first == last) {
+        return result;
+    }
+    PartialSumInputT sum = *first;
+    *result = sum;
+    first = first + 1;
+    result = result + 1;
+    while (first != last) {
+        sum = sum + *first;
+        *result = sum;
+        first = first + 1;
+        result = result + 1;
+    }
+    return result;
+}
+
+int *partial_sum(int *first, int *last, int *result, int (*binary_op)(int, int)) {
+    if (first == last) {
+        return result;
+    }
+    int sum = *first;
+    *result = sum;
+    first = first + 1;
+    result = result + 1;
+    while (first != last) {
+        sum = binary_op(sum, *first);
+        *result = sum;
+        first = first + 1;
+        result = result + 1;
+    }
+    return result;
+}
+
+}
+
+#endif

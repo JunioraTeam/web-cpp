@@ -2,7 +2,7 @@
 
 import {LinkerError} from "../common/error";
 import {EmptyLocation} from "../common/node";
-import {BinaryObject, CompiledObject, SourceMap} from "../common/object";
+import {BinaryObject, CompiledObject, SourceMap, WarningDiagnostic} from "../common/object";
 import {ImportObject} from "../runtime/runtime";
 import {
     i32, JSONEmitter,
@@ -37,6 +37,7 @@ export function link(fileName: string, objects: CompiledObject[], option: LinkOp
     const externVarMap = new Map<string, number>();
     const sourceMap = new Map<string, SourceMap>();
     const requiredFuncTypes = new Set<string>();
+    const warnings = objects.reduce((result, object) => result.concat(object.warnings), [] as WarningDiagnostic[]);
 
     // 0. construct sourceMap
     for (const object of objects) {
@@ -169,6 +170,7 @@ export function link(fileName: string, objects: CompiledObject[], option: LinkOp
         entry: entry[0],
         sourceMap,
         scope,
+        warnings,
         binary: emitter.toArrayBuffer(),
         json: jsonEmitter.getJSON(),
         dumpInfo,

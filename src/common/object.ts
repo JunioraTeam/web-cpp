@@ -1,4 +1,5 @@
 import {SourceMapGenerator} from "source-map";
+import {SourceLocation} from "./node";
 import {Scope} from "../codegen/scope";
 import {Type} from "../type";
 import {WASMJSON, WFunction, WFunctionType, WMemoryLocation, WStatement} from "../wasm";
@@ -20,6 +21,11 @@ export interface ImportSymbol {
     type: WFunctionType;
 }
 
+export interface WarningDiagnostic {
+    message: string;
+    location: SourceLocation;
+}
+
 export interface CompiledObject {
     fileName: string;
     dataSize: number;
@@ -30,6 +36,7 @@ export interface CompiledObject {
     data: ArrayBuffer;
     requiredWASMFuncTypes: Set<string>;
     scope: Scope;
+    warnings: WarningDiagnostic[];
 
     // debug only
     source?: string;
@@ -48,6 +55,7 @@ export interface BinaryObject {
     binary: ArrayBuffer;
     heapStart: number;
     scope: Scope;
+    warnings: WarningDiagnostic[];
 
     // debug only
     sourceMap?: Map<string, SourceMap>;

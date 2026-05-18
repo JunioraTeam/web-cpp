@@ -2,6 +2,7 @@ import {InternalError, SyntaxError} from "../../common/error";
 import {Node, SourceLocation} from "../../common/node";
 import {getPrimitiveTypeFromSpecifiers, isTypeSpecifier} from "../../common/utils";
 import {Type} from "../../type";
+import {ConstType} from "../../type/compound_type";
 import {ClassSpecifier} from "../class/class_specifier";
 import {EnumSpecifier} from "../class/enum_specifier";
 import {CompileContext} from "../context";
@@ -48,9 +49,7 @@ export class SpecifierList extends Node {
             throw new SyntaxError("Illegal Return Type", this);
         }
         if (stringNodes.indexOf("const") !== -1) {
-            // TODO:: big bug
-            // alter on type may result in pollution
-            // resultType.isConst = true;
+            resultType = new ConstType(resultType);
         }
         return resultType;
     }

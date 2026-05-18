@@ -190,8 +190,8 @@ export class ConstructorDeclaration extends ClassDirective {
                 }
             } else {
                 if (field.type instanceof ClassType) {
-                    const name = classType.fullName + "#" + classType.shortName;
-                    if (isFunctionExists(ctx, name, [new PointerType(classType)])) {
+                    const name = field.type.fullName + "::#" + field.type.shortName;
+                    if (isFunctionExists(ctx, name, [new PointerType(field.type)])) {
                         statements.push(new ExpressionStatement(this.location,
                             new CallExpression(this.location,
                                 Identifier.fromString(this.location, name),

@@ -25,7 +25,7 @@ export class WGetAddress extends WExpression {
         } else if ( this.form === WMemoryLocation.EXTERN ) {
             offset += e.ctx.getExternLocation(this.offsetName);
         }
-        e.emitIns(I32.const, WType.u32, offset, this.location);
+        e.emitIns(I32.const, WType.i32, offset, this.location);
         if (e instanceof JSONEmitter) {
             e.memoryInfo.push([e.insBuffer.length, this.form, this.offset]);
         }

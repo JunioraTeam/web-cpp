@@ -1,0 +1,153 @@
+#ifndef _CPP_DEQUE
+#define _CPP_DEQUE
+
+__libcall void __container_error(char *message);
+
+namespace std {
+
+template<typename T>
+class deque {
+    T *data_;
+    int size_;
+    int capacity_;
+
+    void grow_to(int new_capacity) {
+        if (new_capacity <= capacity_) {
+            return;
+        }
+        T *new_data = new T[new_capacity];
+        for (int i = 0; i < size_; i++) {
+            new_data[i] = data_[i];
+        }
+        delete[] data_;
+        data_ = new_data;
+        capacity_ = new_capacity;
+    }
+
+    void grow() {
+        int new_capacity = capacity_ * 2;
+        if (new_capacity < 1) {
+            new_capacity = 1;
+        }
+        grow_to(new_capacity);
+    }
+
+    void ensure_capacity_for_one() {
+        if (size_ == capacity_) {
+            grow();
+        }
+    }
+
+public:
+    deque() {
+        size_ = 0;
+        capacity_ = 4;
+        data_ = new T[capacity_];
+    }
+
+    deque(int count, T value) {
+        size_ = 0;
+        capacity_ = 4;
+        while (capacity_ < count) {
+            capacity_ = capacity_ * 2;
+        }
+        data_ = new T[capacity_];
+        for (int i = 0; i < count; i++) {
+            push_back(value);
+        }
+    }
+
+    deque(T first, T second, T third, T fourth) {
+        size_ = 0;
+        capacity_ = 4;
+        data_ = new T[capacity_];
+        push_back(first);
+        push_back(second);
+        push_back(third);
+        push_back(fourth);
+    }
+
+    bool empty() {
+        return size_ == 0;
+    }
+
+    int size() {
+        return size_;
+    }
+
+    T *begin() {
+        return data_;
+    }
+
+    T *end() {
+        return data_ + size_;
+    }
+
+    void clear() {
+        size_ = 0;
+    }
+
+    void push_back(T value) {
+        ensure_capacity_for_one();
+        data_[size_] = value;
+        size_ = size_ + 1;
+    }
+
+    void push_front(T value) {
+        ensure_capacity_for_one();
+        for (int i = size_; i > 0; i--) {
+            data_[i] = data_[i - 1];
+        }
+        data_[0] = value;
+        size_ = size_ + 1;
+    }
+
+    void pop_back() {
+        if (size_ == 0) {
+            __container_error("deque::pop_back on empty deque");
+        }
+        size_ = size_ - 1;
+    }
+
+    void pop_front() {
+        if (size_ == 0) {
+            __container_error("deque::pop_front on empty deque");
+        }
+        for (int i = 0; i < size_ - 1; i++) {
+            data_[i] = data_[i + 1];
+        }
+        size_ = size_ - 1;
+    }
+
+    T& operator[](int index) {
+        if (index < 0 || index >= size_) {
+            __container_error("deque index out of range");
+        }
+        return data_[index];
+    }
+
+    T& at(int index) {
+        if (index < 0 || index >= size_) {
+            __container_error("deque::at index out of range");
+        }
+        return data_[index];
+    }
+
+    T& front() {
+        if (size_ == 0) {
+            __container_error("deque::front on empty deque");
+        }
+        return data_[0];
+    }
+
+    T& back() {
+        if (size_ == 0) {
+            __container_error("deque::back on empty deque");
+        }
+        return data_[size_ - 1];
+    }
+};
+
+}
+
+#endif

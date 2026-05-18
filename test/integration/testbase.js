@@ -69,10 +69,11 @@ async function testJsRun(source, options){
             heapStart: bin.heapStart,
             scope: bin.scope,
             files: [
-                new StringInputFile(options.input),
-                new StringOutputFile(result),
-                new StringOutputFile(result),
+                new StringInputFile(options.input, options.maxInputBytes),
+                new StringOutputFile(result, options.maxOutputBytes),
+                new StringOutputFile(result, options.maxOutputBytes),
             ],
+            maxLoopIterations: options.maxLoopIterations,
         });
         await runtime.run();
     } catch (e) {
@@ -103,10 +104,11 @@ async function testNativeRun(source, options){
             entry: bin.entry,
             heapStart: bin.heapStart,
             files: [
-                new StringInputFile(options.input),
-                new StringOutputFile(result),
-                new StringOutputFile(result),
+                new StringInputFile(options.input, options.maxInputBytes),
+                new StringOutputFile(result, options.maxOutputBytes),
+                new StringOutputFile(result, options.maxOutputBytes),
             ],
+            maxLoopIterations: options.maxLoopIterations,
         });
         await runtime.run();
     } catch (e) {

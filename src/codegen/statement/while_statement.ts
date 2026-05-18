@@ -5,6 +5,7 @@ import {CompileContext} from "../context";
 import {doConversion} from "../conversion";
 import {Expression} from "../expression/expression";
 import {UnaryExpression} from "../expression/unary_expression";
+import {emitLoopTick} from "./loop_guard";
 import {Statement} from "./statement";
 
 export class WhileStatement extends Statement {
@@ -28,6 +29,7 @@ export class WhileStatement extends Statement {
         condition.expr = doConversion(ctx, PrimitiveTypes.int32, condition, this);
         condition.type = PrimitiveTypes.int32;
         ctx.submitStatement(new WBrIf(1, condition.expr.fold(), this.location));
+        emitLoopTick(ctx, this.location);
         ctx.currentFuncContext.continueStack.push(ctx.currentFuncContext.blockLevel + 2);
         ctx.currentFuncContext.breakStack.push(ctx.currentFuncContext.blockLevel + 1);
         ctx.currentFuncContext.blockLevel += 2;

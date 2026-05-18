@@ -7,7 +7,15 @@ AssignmentExpression
     = left:UnaryExpression _ operator:AssignmentOperator _ right:AssignmentExpression {
         return new AST.AssignmentExpression(getLocation(), operator, left, right);
     }
+    / left:UnaryExpression _ operator:AssignmentOperator _ right:BracedInitializerList {
+        return new AST.AssignmentExpression(getLocation(), operator, left, right);
+    }
     / ConditionalExpression
+
+BracedInitializerList
+    = '{' _ initializerList:InitializerList _ ','? _ &!'}' {
+        return initializerList;
+    }
 
 ConditionalExpression
     = test:LogicalOrExpression _ '?' _ consequent:Expression _ &!':' _ alternate:ConditionalExpression {
@@ -52,9 +60,13 @@ PostfixExpression
     }
 
 ArgumentExpressionList
-    = head:AssignmentExpression tail:(_ ',' _ AssignmentExpression)* {
+    = head:ArgumentExpression tail:(_ ',' _ ArgumentExpression)* {
         return buildList(head, tail, 3);
     }
+
+ArgumentExpression
+    = BracedInitializerList
+    / AssignmentExpression
 
 UnaryExpression
     = operator:('++' / '--') _ operand:UnaryExpression {
@@ -74,7 +86,10 @@ UnaryExpression
     / DeleteExpression
 
 CastExpression
-    = '(' _ typeName:TypeName _ ')' _ operand:CastExpression {
+    = kind:('static_cast' / 'dynamic_cast' / 'reinterpret_cast') !IdentifierPart _ '<' _ typeName:TypeName _ &!'>' _ '(' _ operand:Expression _ &!')' {
+        return new AST.CastExpression(getLocation(), typeName, operand, kind.split('_')[0]);
+    }
+    / '(' _ typeName:TypeName _ ')' _ operand:CastExpression {
         return new AST.CastExpression(getLocation(), typeName, operand);
     }
     / UnaryExpression
@@ -133,11 +148,20 @@ ConstantExpression
     = ConditionalExpression
 
 PrimaryExpression
-    = Identifier
+    = 'typeid' !IdentifierPart _ '(' _ target:(TypeName / Expression) _ &!')' {
+        return new AST.TypeInfoExpression(getLocation(), target);
+    }
+    / LambdaExpression
+    / Identifier
     / Constant
     / StringLiteral
     / '(' _ expression:Expression _ &!')' {
         return expression;
+    }
+
+LambdaExpression
+    = '[' _ ']' _ '(' _ parameters:ParameterList? _ &!')' _ body:CompoundStatement {
+        return new AST.LambdaExpression(getLocation(), parameters || new AST.ParameterList(getLocation()), body);
     }
 
 

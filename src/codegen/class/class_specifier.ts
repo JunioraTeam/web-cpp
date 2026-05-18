@@ -67,27 +67,32 @@ export class ClassSpecifier extends Node {
         const lookupName = this.identifier.getLookupName(ctx);
 
         const oldItem = ctx.scopeManager.lookup(lookupName);
+        const inheritance = this.inherits.map((x) => x.codegen(ctx));
+        let classType: ClassType;
 
         if (oldItem !== null) {
+            if (!(oldItem instanceof ClassType)) {
+                throw new SyntaxError(`conflict type of ${lookupName}`, this);
+            }
             if (this.declarations === null) {
-                if (oldItem instanceof ClassType) {
-                    return oldItem;
-                } else {
-                    throw new SyntaxError(`conflict type of ${lookupName}`, this);
-                }
-            } else {
+                return oldItem;
+            }
+            if (oldItem.isComplete) {
                 throw new SyntaxError(`redefine of ${lookupName}`, this);
             }
+            classType = oldItem;
+            classType.isUnion = this.typeName === "union";
+            classType.inheritance = inheritance;
+        } else {
+            classType = new ClassType(shortName, fullName, ctx.fileName, [],
+                this.typeName === "union", inheritance);
         }
-
-        const inheritance = this.inherits.map((x) => x.codegen(ctx));
-
-        const classType = new ClassType(shortName, fullName, ctx.fileName, [],
-            this.typeName === "union", inheritance);
 
         if (this.declarations === null) {
             // incomplete definition;
-            ctx.scopeManager.declare(lookupName, classType, this);
+            if (oldItem === null) {
+                ctx.scopeManager.declare(lookupName, classType, this);
+            }
             return classType;
         }
 
@@ -98,7 +103,9 @@ export class ClassSpecifier extends Node {
 
         // find virtual
 
-        ctx.scopeManager.define(lookupName, classType, this);
+        if (oldItem === null) {
+            ctx.scopeManager.define(lookupName, classType, this);
+        }
         const activeScopes = ctx.scopeManager.currentContext.activeScopes;
         ctx.scopeManager.enterScope(fullName);
         ctx.scopeManager.activeScopes(activeScopes);
@@ -145,7 +152,7 @@ export class ClassSpecifier extends Node {
         const fullName = this.identifier.getFullName(ctx);
         const item = ctx.scopeManager.lookup(fullName + "::#" + shortName);
         if (item === null) {
-            new ConstructorDeclaration(this.location, this.identifier,
+            new ConstructorDeclaration(this.location, Identifier.fromString(this.location, shortName),
                 new ParameterList(this.location), [],
                 new CompoundStatement(this.location, [])).codegen(ctx);
         }
@@ -156,7 +163,7 @@ export class ClassSpecifier extends Node {
         const fullName = this.identifier.getFullName(ctx);
         const item = ctx.scopeManager.lookup(fullName + "::~" + shortName);
         if (item === null) {
-            new DestructorDeclaration(this.location, this.identifier,
+            new DestructorDeclaration(this.location, Identifier.fromString(this.location, shortName),
                 new CompoundStatement(this.location, []), false).codegen(ctx);
         }
     }

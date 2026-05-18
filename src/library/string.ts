@@ -21,6 +21,17 @@ export function memset(this: Runtime, ptr: number, value: number, size: number):
     return ptr;
 }
 
+export function memcmp(this: Runtime, lhs: number, rhs: number, size: number): number {
+    for (let i = 0; i < size; i++) {
+        const lch = this.memory.getUint8(lhs + i);
+        const rch = this.memory.getUint8(rhs + i);
+        if (lch !== rch) {
+            return lch - rch;
+        }
+    }
+    return 0;
+}
+
 export function strlen(this: Runtime, ptr: number): number {
     let ch = this.memory.getUint8(ptr);
     let len = 0;
@@ -73,6 +84,25 @@ export function strcat(this: Runtime, dst: number, src: number): number {
         ddst ++;
         src ++;
         ch = this.memory.getUint8(src);
+    }
+    this.memory.setUint8(ddst, 0);
+    return dst;
+}
+
+export function strncat(this: Runtime, dst: number, src: number, size: number): number {
+    let ddst = dst;
+    let ch = this.memory.getUint8(ddst);
+    while (ch !== 0) {
+        ddst ++;
+        ch = this.memory.getUint8(ddst);
+    }
+    for (let i = 0; i < size; i++) {
+        ch = this.memory.getUint8(src + i);
+        if (ch === 0) {
+            break;
+        }
+        this.memory.setUint8(ddst, ch);
+        ddst ++;
     }
     this.memory.setUint8(ddst, 0);
     return dst;

@@ -77,9 +77,11 @@ export class UnaryExpression extends Expression {
                 expr = doReferenceTransform(ctx, expr, this);
             }
             if (expr.type instanceof PointerType) {
+                const elementType = expr.type.elementType;
+                expr = doValueTransform(ctx, expr, this);
                 return {
                     isLeft: true,
-                    type: new LeftReferenceType(expr.type.elementType),
+                    type: new LeftReferenceType(elementType),
                     expr: expr.expr,
                 };
             } else {

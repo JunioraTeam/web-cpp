@@ -1,0 +1,6 @@
+#ifndef _CPP_PRIORITY_QUEUE
+#define _CPP_PRIORITY_QUEUE
+
+#include <queue>
+
+#endif

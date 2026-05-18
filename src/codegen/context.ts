@@ -6,7 +6,7 @@
 import {SourceMapGenerator} from "source-map";
 import {InternalError} from "../common/error";
 import {Node} from "../common/node";
-import {CompiledObject, ImportSymbol} from "../common/object";
+import {CompiledObject, ImportSymbol, WarningDiagnostic} from "../common/object";
 import {AddressType, FunctionEntity, Variable} from "../common/symbol";
 import {AccessControl, Type} from "../type";
 import {WFunction, WExpression, WStatement} from "../wasm";
@@ -49,6 +49,7 @@ export class CompileContext {
     public requiredWASMFuncTypes: Set<string>;
     public functions: WFunction[];
     public imports: ImportSymbol[];
+    public warnings: WarningDiagnostic[];
 
     // function internal
     public funcContexts: FuncContext[];
@@ -69,6 +70,7 @@ export class CompileContext {
         this.source = source;
         this.functions = [];
         this.imports = [];
+        this.warnings = [];
         this.currentFuncContext = {
             statementContainer: [],
             switchContext: null,
@@ -135,7 +137,10 @@ export class CompileContext {
     }
 
     public raiseWarning(content: string, node: Node) {
-        console.log("[Warning]: " + content);
+        this.warnings.push({
+            message: content,
+            location: node.location,
+        });
     }
 
     public toCompiledObject(): CompiledObject {
@@ -151,6 +156,7 @@ export class CompileContext {
             sourceMap: this.sourceMap,
             requiredWASMFuncTypes: this.requiredWASMFuncTypes,
             scope: this.scopeManager.root,
+            warnings: this.warnings,
         };
     }
 

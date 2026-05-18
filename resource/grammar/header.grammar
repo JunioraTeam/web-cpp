@@ -9,6 +9,13 @@
         return new AST.SourceLocation(options.fileName, text(), newPosition(location_.start), newPosition(location_.end));
     }
 
+    function getEndTokenLocation(token) {
+        const location_ = location();
+        return new AST.SourceLocation(options.fileName, token,
+            new AST.Position(location_.end.offset - token.length, location_.end.line, location_.end.column - token.length - 1),
+            new AST.Position(location_.end.offset, location_.end.line, location_.end.column - 1));
+    }
+
     function extractOptional(optional, index) {
         return optional ? optional[index] : null;
     }

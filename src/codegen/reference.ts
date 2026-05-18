@@ -5,13 +5,19 @@
  */
 import {InternalError} from "../common/error";
 import {Node} from "../common/node";
+import {AddressType} from "../common/symbol";
+import {Type} from "../type";
 import {ClassType} from "../type/class_type";
-import {LeftReferenceType, ReferenceType} from "../type/compound_type";
+import {ConstType, LeftReferenceType, ReferenceType} from "../type/compound_type";
 import {PrimitiveTypes} from "../type/primitive_type";
 import {WAddressHolder} from "./address";
 import {CompileContext} from "./context";
 import {ExpressionResult} from "./expression/expression";
 import {FunctionLookUpResult} from "./scope";
+
+function unwrapConstType(type: Type): Type {
+    return type instanceof ConstType ? type.elementType : type;
+}
 
 export function doReferenceBinding(ctx: CompileContext, dst: ExpressionResult,
                                    src: ExpressionResult, node: Node) {
@@ -30,15 +36,15 @@ export function doReferenceBinding(ctx: CompileContext, dst: ExpressionResult,
 
     if ( src.type instanceof ReferenceType ) {
 
-        const sr = src.type.elementType;
-        const dr = dst.type.elementType;
+        const sr = unwrapConstType(src.type.elementType);
+        const dr = unwrapConstType(dst.type.elementType);
 
         if ( sr instanceof ClassType && dr instanceof ClassType) {
             if ( !sr.isSubClassOf(dr) ) {
                 throw new InternalError(`could not convert from ${src.type} to ${dst.type}`);
             }
         } else {
-            if ( !src.type.elementType.equals(dst.type.elementType)) {
+            if ( !sr.equals(dr)) {
                 throw new InternalError(`could not convert from ${src.type} to ${dst.type}`);
             }
         }
@@ -50,20 +56,28 @@ export function doReferenceBinding(ctx: CompileContext, dst: ExpressionResult,
         ctx.submitStatement(dst.expr.createStore(ctx, PrimitiveTypes.uint32,
             src.expr));
     } else {
-        const sr = src.type;
-        const dr = dst.type.elementType;
+        const sr = unwrapConstType(src.type);
+        const dr = unwrapConstType(dst.type.elementType);
 
         if ( sr instanceof ClassType && dr instanceof ClassType) {
             if ( !sr.isSubClassOf(dr) ) {
                 throw new InternalError(`could not convert from ${src.type} to ${dst.type}`);
             }
         } else {
-            if ( !src.type.equals(dst.type.elementType)) {
+            if ( !sr.equals(dr)) {
                 throw new InternalError(`could not convert from ${src.type} to ${dst.type}`);
             }
         }
         if (!src.isLeft || !(src.expr instanceof WAddressHolder)) {
-            throw new InternalError(`you could only bind to a left value`);
+            if (!(dst.type.elementType instanceof ConstType)) {
+                throw new InternalError(`you could only bind to a left value`);
+            }
+            const storage = ctx.memory.allocStack(src.type.length);
+            const holder = new WAddressHolder(storage, AddressType.STACK, node.location);
+            ctx.submitStatement(holder.createStore(ctx, src.type, src.expr));
+            ctx.submitStatement(dst.expr.createStore(ctx, PrimitiveTypes.uint32,
+                holder.createLoadAddress(ctx)));
+            return;
         }
 
         ctx.submitStatement(dst.expr.createStore(ctx, PrimitiveTypes.uint32,

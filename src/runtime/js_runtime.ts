@@ -272,7 +272,9 @@ export class JSRuntime extends Runtime {
             const funcIdx = ins[0] === Control.call_indirect ?
                 this.stackTop.stack.pop() as number
                 : ins[1] as number;
-            const funcType = this.program.types[funcIdx];
+            const funcType = ins[0] === Control.call_indirect
+                ? this.program.types[ins[1] as number]
+                : this.program.types[funcIdx];
             const args: WASMNumber[] = [];
 
             for (let i = 1; i < funcType.length; i++) {

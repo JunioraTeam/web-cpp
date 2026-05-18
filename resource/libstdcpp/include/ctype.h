@@ -16,4 +16,4 @@ __libcall int isxdigit(int);
 __libcall int tolower(int);
 __libcall int toupper(int);
 
-#undef
+#endif

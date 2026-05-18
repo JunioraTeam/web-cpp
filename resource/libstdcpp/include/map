@@ -1,0 +1,100 @@
+#ifndef _CPP_MAP
+#define _CPP_MAP
+
+__libcall void __container_error(char *message);
+
+namespace std {
+
+template<typename MapK, typename MapV>
+class map {
+    MapK *keys_;
+    MapV *values_;
+    int size_;
+    int capacity_;
+
+    void grow() {
+        int new_capacity = capacity_ * 2;
+        MapK *new_keys = new MapK[new_capacity];
+        MapV *new_values = new MapV[new_capacity];
+        for (int i = 0; i < size_; i++) {
+            new_keys[i] = keys_[i];
+            new_values[i] = values_[i];
+        }
+        delete[] keys_;
+        delete[] values_;
+        keys_ = new_keys;
+        values_ = new_values;
+        capacity_ = new_capacity;
+    }
+
+    int lower_bound_index(MapK key) {
+        int index = 0;
+        while (index < size_ && keys_[index] < key) {
+            index = index + 1;
+        }
+        return index;
+    }
+
+public:
+    map() {
+        size_ = 0;
+        capacity_ = 4;
+        keys_ = new MapK[capacity_];
+        values_ = new MapV[capacity_];
+    }
+
+    bool empty() {
+        return size_ == 0;
+    }
+
+    int size() {
+        return size_;
+    }
+
+    int find(MapK key) {
+        int index = lower_bound_index(key);
+        if (index < size_ && keys_[index] == key) {
+            return index;
+        }
+        return -1;
+    }
+
+    void insert(MapK key, MapV value) {
+        operator[](key) = value;
+    }
+
+    MapK key_at(int index) {
+        if (index < 0 || index >= size_) {
+            __container_error("map::key_at index out of range");
+        }
+        return keys_[index];
+    }
+
+    MapV& value_at(int index) {
+        if (index < 0 || index >= size_) {
+            __container_error("map::value_at index out of range");
+        }
+        return values_[index];
+    }
+
+    MapV& operator[](MapK key) {
+        int index = lower_bound_index(key);
+        if (index < size_ && keys_[index] == key) {
+            return values_[index];
+        }
+        if (size_ == capacity_) {
+            grow();
+        }
+        for (int i = size_; i > index; i--) {
+            keys_[i] = keys_[i - 1];
+            values_[i] = values_[i - 1];
+        }
+        keys_[index] = key;
+        size_ = size_ + 1;
+        return values_[index];
+    }
+};
+
+}
+
+#endif

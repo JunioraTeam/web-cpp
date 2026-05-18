@@ -11,6 +11,13 @@ export default `{
         return new AST.SourceLocation(options.fileName, text(), newPosition(location_.start), newPosition(location_.end));
     }
 
+    function getEndTokenLocation(token) {
+        const location_ = location();
+        return new AST.SourceLocation(options.fileName, token,
+            new AST.Position(location_.end.offset - token.length, location_.end.line, location_.end.column - token.length - 1),
+            new AST.Position(location_.end.offset, location_.end.line, location_.end.column - 1));
+    }
+
     function extractOptional(optional, index) {
         return optional ? optional[index] : null;
     }
@@ -76,12 +83,37 @@ export default `{
 }
 Start = TranslationUnit
 ClassSpecifier
-    = classKey:ClassKeyword _ identifier:TypeDeclarationIdentifier _ ih:BaseClause? _ ScopeStart _ declarations:StructDeclarationList? _ ScopeEnd {
+    = classKey:ClassKeyword _ identifier:QualifiedClassDeclarationIdentifier _ ih:BaseClause? _ ScopeStart _ declarations:StructDeclarationList? _ ScopeEnd {
         return new AST.ClassSpecifier(getLocation(), classKey, identifier, declarations || [] , ih || []);
     }
-    / classKey:ClassKeyword _ identifier:TypeDeclarationIdentifier {
+    / classKey:ClassKeyword _ identifier:QualifiedClassDeclarationIdentifier {
         return new AST.ClassSpecifier(getLocation(), classKey, identifier, null, []);
     }
+    / classKey:ClassKeyword _ identifier:ClassDeclarationIdentifier _ ih:BaseClause? _ ScopeStart _ declarations:StructDeclarationList? _ ScopeEnd {
+        return new AST.ClassSpecifier(getLocation(), classKey, identifier, declarations || [] , ih || []);
+    }
+    / classKey:ClassKeyword _ identifier:ClassDeclarationIdentifier {
+        return new AST.ClassSpecifier(getLocation(), classKey, identifier, null, []);
+    }
+
+QualifiedClassDeclarationIdentifier
+    = isFullName:'::'? prefix:TypeIdentifier _ '::' _ name:Id {
+        if (options.isCpp) {
+            globalMap.set(name.name, TYPE_NAME);
+            currScope.names.set(name.name, TYPE_NAME);
+        }
+        return new AST.Identifier(getLocation(), prefix.name.concat([name]), isFullName || prefix.isFullName);
+    }
+
+ClassDeclarationIdentifier
+    = isFullName:'::'? namespace:(UnifiedIdentifier '::')+ name:Id {
+        if (options.isCpp) {
+            globalMap.set(name.name, TYPE_NAME);
+            currScope.names.set(name.name, TYPE_NAME);
+        }
+        return new AST.Identifier(getLocation(), namespace.map(x=>x[0]).concat([name]), isFullName);
+    }
+    / TypeDeclarationIdentifier
 
 ClassKeyword
     = ('struct' / 'class' / 'union') !IdentifierPart {
@@ -89,7 +121,7 @@ ClassKeyword
     }
 
 BaseSpecifier
-    = lb:AccessControlKey? _ className:TypeIdentifier{
+    = leadingVirtual:('virtual' !IdentifierPart)? _ lb:AccessControlKey? _ trailingVirtual:('virtual' !IdentifierPart)? _ className:TypeIdentifier{
         return new AST.BaseSpecifier(getLocation(), lb || "", className);
     }
 
@@ -103,10 +135,21 @@ StructDeclarationList
         return buildList(head, tail, 1);
     }
 
-AccessControlKey = 'public' / 'private' / 'protect'
+AccessControlKey = 'public' / 'private' / 'protected' / 'protect'
 
 StructDeclaration
-    = id:TypeIdentifier _ '(' _ param:ParameterList? _ ')' _ initList:ConstructorInitializeList? _ body:CompoundStatement{
+    = classKey:ClassKeyword _ identifier:QualifiedClassDeclarationIdentifier _ ';' {
+        const classDecl = new AST.ClassSpecifier(getLocation(), classKey, identifier, null, []);
+        return new AST.Declaration(getLocation(), new AST.SpecifierList(getLocation(), [classDecl]), []);
+    }
+    / classKey:ClassKeyword _ identifier:ClassDeclarationIdentifier _ ';' {
+        const classDecl = new AST.ClassSpecifier(getLocation(), classKey, identifier, null, []);
+        return new AST.Declaration(getLocation(), new AST.SpecifierList(getLocation(), [classDecl]), []);
+    }
+    / classDecl:ClassSpecifier _ ';' {
+        return new AST.Declaration(getLocation(), new AST.SpecifierList(getLocation(), [classDecl]), []);
+    }
+    / id:TypeIdentifier _ '(' _ param:ParameterList? _ ')' _ initList:ConstructorInitializeList? _ body:CompoundStatement{
         return new AST.ConstructorDeclaration(getLocation(), id, param || new AST.ParameterList(getLocation()), initList || [], body);
     }
     / id:TypeIdentifier _ '(' _ param:ParameterList? _ ')' _ initList:ConstructorInitializeList? _ ';'{
@@ -118,8 +161,19 @@ StructDeclaration
     / isVirtual:'virtual'? _ '~' id:TypeIdentifier _ '(' _ ')' _ ';'{
         return new AST.DestructorDeclaration(getLocation(), id, null, isVirtual === "virtual");
     }
+    / conv:ConversionFunctionDeclarator _ body:CompoundStatement {
+        return new AST.FunctionDefinition(getLocation(), conv.specifiers, conv.declarator, body);
+    }
+    / conv:ConversionFunctionDeclarator _ ';' {
+        return new AST.Declaration(getLocation(), conv.specifiers, [
+            new AST.InitDeclarator(getLocation(), conv.declarator, null)
+        ]);
+    }
     / label:AccessControlKey _ ':' {
         return new AST.AccessControlLabel(getLocation(), label);
+    }
+    / specifiers:DeclarationSpecifiers _ declarators:StructDeclaratorList _ ';' {
+        return new AST.Declaration(getLocation(), specifiers, declarators.filter(x => !!x));
     }
     / decl:Declaration {
         return decl;
@@ -138,6 +192,17 @@ ConstructorInitializeItem
         return new AST.ConstructorInitializeItem(getLocation(), key, value, true);
     }
 
+ConversionFunctionDeclarator
+    = 'operator' !IdentifierPart _ specifiers:DeclarationSpecifiers _ '(' _ ')' {
+        const name = AST.Identifier.fromString(getLocation(), "#cast:" + specifiers.location.source.trim());
+        return {
+            specifiers,
+            declarator: new AST.FunctionDeclarator(getLocation(),
+                new AST.IdentifierDeclarator(getLocation(), name),
+                new AST.ParameterList(getLocation()))
+        };
+    }
+
 
 StructDeclaratorList
     = head:StructDeclarator tail:(_ ',' _ StructDeclarator)* {
@@ -146,10 +211,10 @@ StructDeclaratorList
 
 StructDeclarator
     = ':' _ width:ConstantExpression {
-        return new AST.StructDeclarator(getLocation(), null, width, null);
+        return null;
     }
-    / declarator:Declarator _ initDeclarators:InitDeclaratorList? width:(_ ':' _ ConstantExpression)? {
-        return new AST.StructDeclarator(getLocation(), declarator, extractOptional(width, 3), initDeclarators);
+    / declarator:Declarator initializer:CppInitializer? _ width:(_ ':' _ ConstantExpression)? {
+        return new AST.InitDeclarator(getLocation(), declarator, initializer || null);
     }
 
 EnumSpecifier
@@ -171,205 +236,6 @@ Enumerator
         return new AST.Enumerator(getLocation(), identifier, extractOptional(value, 3));
     }
 
-
-Constant
-    = FloatingConstant
-    / IntegerConstant
-    / CharacterConstant
-
-IntegerConstant
-    // REORDER: HexadecimalConstant / OctalConstant
-    = integer:(constant:(DecimalConstant / HexadecimalConstant / OctalConstant) {
-        return {
-            base: constant.base,
-            value: constant.value,
-            raw: text()
-        }
-        }) suffix:$IntegerSuffix? {
-        if (suffix.toLowerCase().includes('u')) {
-            integer.value.unsigned = true;
-        }
-        return new AST.IntegerConstant(getLocation(), integer.base, integer.value, integer.raw, suffix || null);
-    }
-
-DecimalConstant
-    = NonzeroDigit Digit* {
-        // SAFE_NUMBER: Using Long.
-        return {
-            base: 10,
-            value: Long.fromString(text())
-        };
-    }
-
-OctalConstant
-    = '0' digits:$OctalDigit* {
-        // SAFE_NUMBER: Using Long.
-        return {
-            base: 8,
-            value: digits.length ? Long.fromString(digits, 8) : Long.ZERO
-        };
-    }
-
-HexadecimalConstant
-    = HexadecimalPrefix digits:$HexadecimalDigit+ {
-        // SAFE_NUMBER: Using Long.
-        return {
-            base: 16,
-            value: Long.fromString(digits, 16)
-        };
-    }
-
-FloatingConstant
-    = DecimalFloatingConstant
-
-DecimalFloatingConstant
-    = raw:$((FractionalConstant ExponentPart?) / (DigitSequence ExponentPart)) suffix:$FloatingSuffix? {
-        return new AST.FloatingConstant(getLocation(), Number.parseFloat(raw), raw, suffix || null);
-    }
-
-HexadecimalFractionalConstant
-    = HexadecimalDigitSequence '.' HexadecimalDigitSequence?
-    / '.' HexadecimalDigitSequence
-
-CharacterConstant
-    = prefix:$[LuU]? '\\'' value:CCharSequence '\\'' {
-        return new AST.CharacterConstant(getLocation(), value, prefix || null);
-    }
-
-EncodingPrefix
-    = 'u8'
-    / 'u'
-    / 'U'
-    / 'L'
-
-UniversalCharacterName
-    = '\\\\u' hexQuad:$HexQuad {
-        return parseUniversalCharacter(hexQuad);
-    }
-    / '\\\\U' hexQuads:$(HexQuad HexQuad) {
-        return parseUniversalCharacter(hexQuads);
-    }
-
-HexQuad
-    = HexadecimalDigit HexadecimalDigit HexadecimalDigit HexadecimalDigit
-
-StringLiteral
-    = head:SingleStringLiteral tail:(_ SingleStringLiteral)* {
-        return buildList(head, tail, 1).reduce((left, right) => {
-            let prefix = null;
-            if (left.prefix !== right.prefix) {
-                if (left.prefix) {
-                    if (right.prefix) {
-                        error('Unsupported non-standard concatenation of string literals');
-                    } else {
-                        prefix = left.prefix;
-                    }
-                } else {
-                    prefix = right.prefix;
-                }
-            } else {
-                prefix = left.prefix;
-            }
-            const value = left.value.slice(0, -1) + right.value;
-            return new AST.StringLiteral(getLocation(), prefix, value);
-        });
-    }
-
-SingleStringLiteral
-    = prefix:$EncodingPrefix? '"' value:SCharSequence? &!'"' {
-        return new AST.StringLiteral(getLocation(), prefix || null, (value || '') + '\\0');
-    }
-
-SCharSequence
-    = chars:SChar+ {
-        return chars.join('');
-    }
-
-SChar
-    = [^"\\\\\\n] // any member of the source character set except the double-quote ", backslash \\, or new-line character
-    / EscapeSequence
-
-UnaryOperator
-    = [*+\\-~!]
-    / SingleAnd
-
-CCharSequence
-    = chars:CChar+ {
-        return chars.join('');
-    }
-
-CChar
-    = [^'\\\\\\n] // any member of the source character set except the single-quote ', backslash \\, or new-line character
-    / EscapeSequence
-
-EscapeSequence
-    = SimpleEscapeSequence
-    / OctalEscapeSequence
-    / HexadecimalEscapeSequence
-    / UniversalCharacterName
-
-SimpleEscapeSequence
-    = ('\\\\\\''
-    / '\\\\"'
-    / '\\\\?'
-    / '\\\\\\\\') {
-        return text().charAt(1);
-    }
-    / '\\\\a' {
-        return '\\x07';
-    }
-    / '\\\\b' {
-        return '\\b';
-    }
-    / '\\\\f' {
-        return '\\f';
-    }
-    / '\\\\n' {
-        return '\\n';
-    }
-    / '\\\\r' {
-        return '\\r';
-    }
-    / '\\\\t' {
-        return '\\t';
-    }
-    / '\\\\v' {
-        return '\\v';
-    }
-
-OctalEscapeSequence
-    = '\\\\' digits:$(OctalDigit OctalDigit? OctalDigit?) {
-        // SAFE_NUMBER: At most 0777.
-        return String.fromCharCode(Number.parseInt(digits, 8));
-    }
-
-HexadecimalEscapeSequence
-    = '\\\\x' digits:$HexadecimalDigit+ {
-        // TODO: Guard against very long digits.
-        return String.fromCharCode(Number.parseInt(digits, 16));
-    }
-
-BinaryExponentPart
-    = [pP] Sign? DigitSequence
-
-HexadecimalDigitSequence
-    = HexadecimalDigit+
-
-FloatingSuffix
-    = [flFL]
-
-FractionalConstant
-    = DigitSequence '.' DigitSequence?
-    / '.' DigitSequence
-
-ExponentPart
-    = [eE] Sign? DigitSequence
-
-Sign
-    = [+\\-]
-
-DigitSequence
-    = Digit+
 
 TranslationUnit
     = list:DeclarationList{
@@ -399,7 +265,7 @@ BlockDeclarationList
     }
 
 NamespaceDefinition
-    = 'namespace' _ name:Identifier _ '{' _ list:DeclarationList? _'}'{
+    = 'namespace' _ name:(Identifier / TypeIdentifier) _ '{' _ list:DeclarationList? _'}'{
         currScope.names.set(name.getLastID().name, TYPE_NAME);
         return new AST.NameSpaceBlock(getLocation(), name, list || []);
     }
@@ -460,6 +326,8 @@ Declarator
 DirectDeclarator
     = head:(identifier:Identifier {
         return new AST.IdentifierDeclarator(getLocation(), identifier);
+    } / '[' _ identifiers:IdentifierList _ &!']' {
+        return new AST.StructuredBindingDeclarator(getLocation(), identifiers);
     } / '(' _ declarator:Declarator _ ')' {
         return declarator;
     } ) tail:(_ (
@@ -470,15 +338,29 @@ DirectDeclarator
                 arguments: [false, [], length, false]
             };
         }
-        / '(' _ parameters: ParameterList? _ ')' {
+        / '(' _ parameters: ParameterList? _ ')' _ qualifiers:MemberFunctionQualifierList? {
             return {
                 location: getLocation(),
                 type: AST.FunctionDeclarator,
-                arguments: [parameters || new AST.ParameterList(getLocation())]
+                arguments: [
+                    parameters || new AST.ParameterList(getLocation()),
+                    qualifiers ? qualifiers.indexOf('const') !== -1 : false,
+                    qualifiers ? qualifiers.indexOf('override') !== -1 : false
+                ]
             }
         }
     ))* {
         return extractList(tail, 1).reduce((result, element) => new element.type(element.location, result, ...element.arguments), head);
+    }
+
+MemberFunctionQualifierList
+    = head:MemberFunctionQualifier tail:(_ MemberFunctionQualifier)* {
+        return buildList(head, tail, 1);
+    }
+
+MemberFunctionQualifier
+    = ('const' / 'override') !IdentifierPart {
+        return text();
     }
 
 Pointer
@@ -678,7 +560,15 @@ AssignmentExpression
     = left:UnaryExpression _ operator:AssignmentOperator _ right:AssignmentExpression {
         return new AST.AssignmentExpression(getLocation(), operator, left, right);
     }
+    / left:UnaryExpression _ operator:AssignmentOperator _ right:BracedInitializerList {
+        return new AST.AssignmentExpression(getLocation(), operator, left, right);
+    }
     / ConditionalExpression
+
+BracedInitializerList
+    = '{' _ initializerList:InitializerList _ ','? _ &!'}' {
+        return initializerList;
+    }
 
 ConditionalExpression
     = test:LogicalOrExpression _ '?' _ consequent:Expression _ &!':' _ alternate:ConditionalExpression {
@@ -723,9 +613,13 @@ PostfixExpression
     }
 
 ArgumentExpressionList
-    = head:AssignmentExpression tail:(_ ',' _ AssignmentExpression)* {
+    = head:ArgumentExpression tail:(_ ',' _ ArgumentExpression)* {
         return buildList(head, tail, 3);
     }
+
+ArgumentExpression
+    = BracedInitializerList
+    / AssignmentExpression
 
 UnaryExpression
     = operator:('++' / '--') _ operand:UnaryExpression {
@@ -745,7 +639,10 @@ UnaryExpression
     / DeleteExpression
 
 CastExpression
-    = '(' _ typeName:TypeName _ ')' _ operand:CastExpression {
+    = kind:('static_cast' / 'dynamic_cast' / 'reinterpret_cast') !IdentifierPart _ '<' _ typeName:TypeName _ &!'>' _ '(' _ operand:Expression _ &!')' {
+        return new AST.CastExpression(getLocation(), typeName, operand, kind.split('_')[0]);
+    }
+    / '(' _ typeName:TypeName _ ')' _ operand:CastExpression {
         return new AST.CastExpression(getLocation(), typeName, operand);
     }
     / UnaryExpression
@@ -804,11 +701,20 @@ ConstantExpression
     = ConditionalExpression
 
 PrimaryExpression
-    = Identifier
+    = 'typeid' !IdentifierPart _ '(' _ target:(TypeName / Expression) _ &!')' {
+        return new AST.TypeInfoExpression(getLocation(), target);
+    }
+    / LambdaExpression
+    / Identifier
     / Constant
     / StringLiteral
     / '(' _ expression:Expression _ &!')' {
         return expression;
+    }
+
+LambdaExpression
+    = '[' _ ']' _ '(' _ parameters:ParameterList? _ &!')' _ body:CompoundStatement {
+        return new AST.LambdaExpression(getLocation(), parameters || new AST.ParameterList(getLocation()), body);
     }
 
 
@@ -838,6 +744,205 @@ DeleteExpression
     / 'delete[]' _ expr:AssignmentExpression {
         return new AST.DeleteExpression(getLocation(), expr, true);
     }
+Constant
+    = FloatingConstant
+    / IntegerConstant
+    / CharacterConstant
+
+IntegerConstant
+    // REORDER: HexadecimalConstant / OctalConstant
+    = integer:(constant:(DecimalConstant / HexadecimalConstant / OctalConstant) {
+        return {
+            base: constant.base,
+            value: constant.value,
+            raw: text()
+        }
+        }) suffix:$IntegerSuffix? {
+        if (suffix.toLowerCase().includes('u')) {
+            integer.value.unsigned = true;
+        }
+        return new AST.IntegerConstant(getLocation(), integer.base, integer.value, integer.raw, suffix || null);
+    }
+
+DecimalConstant
+    = NonzeroDigit Digit* {
+        // SAFE_NUMBER: Using Long.
+        return {
+            base: 10,
+            value: Long.fromString(text())
+        };
+    }
+
+OctalConstant
+    = '0' digits:$OctalDigit* {
+        // SAFE_NUMBER: Using Long.
+        return {
+            base: 8,
+            value: digits.length ? Long.fromString(digits, 8) : Long.ZERO
+        };
+    }
+
+HexadecimalConstant
+    = HexadecimalPrefix digits:$HexadecimalDigit+ {
+        // SAFE_NUMBER: Using Long.
+        return {
+            base: 16,
+            value: Long.fromString(digits, 16)
+        };
+    }
+
+FloatingConstant
+    = DecimalFloatingConstant
+
+DecimalFloatingConstant
+    = raw:$((FractionalConstant ExponentPart?) / (DigitSequence ExponentPart)) suffix:$FloatingSuffix? {
+        return new AST.FloatingConstant(getLocation(), Number.parseFloat(raw), raw, suffix || null);
+    }
+
+HexadecimalFractionalConstant
+    = HexadecimalDigitSequence '.' HexadecimalDigitSequence?
+    / '.' HexadecimalDigitSequence
+
+CharacterConstant
+    = prefix:$[LuU]? '\\'' value:CCharSequence '\\'' {
+        return new AST.CharacterConstant(getLocation(), value, prefix || null);
+    }
+
+EncodingPrefix
+    = 'u8'
+    / 'u'
+    / 'U'
+    / 'L'
+
+UniversalCharacterName
+    = '\\\\u' hexQuad:$HexQuad {
+        return parseUniversalCharacter(hexQuad);
+    }
+    / '\\\\U' hexQuads:$(HexQuad HexQuad) {
+        return parseUniversalCharacter(hexQuads);
+    }
+
+HexQuad
+    = HexadecimalDigit HexadecimalDigit HexadecimalDigit HexadecimalDigit
+
+StringLiteral
+    = head:SingleStringLiteral tail:(_ SingleStringLiteral)* {
+        return buildList(head, tail, 1).reduce((left, right) => {
+            let prefix = null;
+            if (left.prefix !== right.prefix) {
+                if (left.prefix) {
+                    if (right.prefix) {
+                        error('Unsupported non-standard concatenation of string literals');
+                    } else {
+                        prefix = left.prefix;
+                    }
+                } else {
+                    prefix = right.prefix;
+                }
+            } else {
+                prefix = left.prefix;
+            }
+            const value = left.value.slice(0, -1) + right.value;
+            return new AST.StringLiteral(getLocation(), prefix, value);
+        });
+    }
+
+SingleStringLiteral
+    = prefix:$EncodingPrefix? '"' value:SCharSequence? &!'"' {
+        return new AST.StringLiteral(getLocation(), prefix || null, (value || '') + '\\0');
+    }
+
+SCharSequence
+    = chars:SChar+ {
+        return chars.join('');
+    }
+
+SChar
+    = [^"\\\\\\n] // any member of the source character set except the double-quote ", backslash \\, or new-line character
+    / EscapeSequence
+
+UnaryOperator
+    = [*+\\-~!]
+    / SingleAnd
+
+CCharSequence
+    = chars:CChar+ {
+        return chars.join('');
+    }
+
+CChar
+    = [^'\\\\\\n] // any member of the source character set except the single-quote ', backslash \\, or new-line character
+    / EscapeSequence
+
+EscapeSequence
+    = SimpleEscapeSequence
+    / OctalEscapeSequence
+    / HexadecimalEscapeSequence
+    / UniversalCharacterName
+
+SimpleEscapeSequence
+    = ('\\\\\\''
+    / '\\\\"'
+    / '\\\\?'
+    / '\\\\\\\\') {
+        return text().charAt(1);
+    }
+    / '\\\\a' {
+        return '\\x07';
+    }
+    / '\\\\b' {
+        return '\\b';
+    }
+    / '\\\\f' {
+        return '\\f';
+    }
+    / '\\\\n' {
+        return '\\n';
+    }
+    / '\\\\r' {
+        return '\\r';
+    }
+    / '\\\\t' {
+        return '\\t';
+    }
+    / '\\\\v' {
+        return '\\v';
+    }
+
+OctalEscapeSequence
+    = '\\\\' digits:$(OctalDigit OctalDigit? OctalDigit?) {
+        // SAFE_NUMBER: At most 0777.
+        return String.fromCharCode(Number.parseInt(digits, 8));
+    }
+
+HexadecimalEscapeSequence
+    = '\\\\x' digits:$HexadecimalDigit+ {
+        // TODO: Guard against very long digits.
+        return String.fromCharCode(Number.parseInt(digits, 16));
+    }
+
+BinaryExponentPart
+    = [pP] Sign? DigitSequence
+
+HexadecimalDigitSequence
+    = HexadecimalDigit+
+
+FloatingSuffix
+    = [flFL]
+
+FractionalConstant
+    = DigitSequence '.' DigitSequence?
+    / '.' DigitSequence
+
+ExponentPart
+    = [eE] Sign? DigitSequence
+
+Sign
+    = [+\\-]
+
+DigitSequence
+    = Digit+
+
 Id
     = !Keyword head:IdentifierNondigit tail:IdentifierPart* {
         return new AST.SingleIdentifier(getLocation(), head + tail.join(''), AST.IDType.ID, []);
@@ -849,7 +954,7 @@ SingleIdentifier
     } {
         return id;
     }
-    / 'operator' ope:OverloadOperator {
+    / 'operator' _ ope:OverloadOperator {
         return new AST.SingleIdentifier(getLocation(), "#" + ope, AST.IDType.ID, []);
     }
     / '~' name:TypeIdentifier {
@@ -921,14 +1026,17 @@ _ = WhiteSpace*
 
 Keyword
     = ('auto'
+    / 'bool'
     / 'break'
     / 'case'
     / 'char'
+    / 'const_cast'
     / 'const'
     / 'continue'
     / 'default'
     / 'double'
     / 'do'
+    / 'dynamic_cast'
     / 'else'
     / 'enum'
     / 'extern'
@@ -959,10 +1067,16 @@ Keyword
     / 'delete'
     / 'operator'
     / 'override'
+    / 'private'
+    / 'protected'
+    / 'public'
+    / 'reinterpret_cast'
     / 'template'
     / 'typename'
     / 'namespace'
-    / 'using') !IdentifierPart
+    / 'using'
+    / 'virtual'
+    / 'static_cast') !IdentifierPart
 
 StorageClassSpecifier
     = ('typedef'
@@ -989,10 +1103,11 @@ PrimitiveTypeSpecifier
      }
 
 OverloadOperator
-    = '+' / '-' / '*' / '/' / '%' / '&' / '<' / '>' / '<=' / '>=' / '==' / '!='
-    / '|' / '^' / '!' / '~' / '&&' / '||' / '>>' / '<<' / '++' / '--'
-    /'()' / '[]' / '->'
-    / AssignmentOperator
+    = AssignmentOperator
+    / '<<=' / '>>=' / '<=' / '>=' / '==' / '!=' / '&&' / '||' / '>>' / '<<' / '++' / '--'
+    / '+' / '-' / '*' / '/' / '%' / '&' / '<' / '>'
+    / '|' / '^' / '!' / '~'
+    / '()' / '[]' / '->'
 
 AssignmentOperator
     = '=' !'=' {
@@ -1008,6 +1123,11 @@ AssignmentOperator
     / '&='
     / '^='
     / '|='
+
+BinaryOperator
+    = '<<=' / '>>=' / '<=' / '>=' / '==' / '!=' / '&&' / '||' / '>>' / '<<'
+    / '*=' / '/=' / '%=' / '+=' / '-=' / '&=' / '^=' / '|='
+    / '+' / '-' / '*' / '/' / '%' / '&' / '<' / '>' / '|' / '^'
 
 AndAnd
     = '&&'
@@ -1116,6 +1236,9 @@ ExpressionStatement
         return expression ? new AST.ExpressionStatement(getLocation(), extractOptional(expression, 0))
                 : new AST.NullStatement(getLocation());
     }
+    / Expression _ BinaryOperator _ token:$[;)] {
+        error("expected primary-expression before '" + token + "' token", getEndTokenLocation(token));
+    }
 
 SelectionStatement
     = 'if' !IdentifierPart _ &!'(' _ test:Expression _ &!')' _ consequent:Statement alternate:(_ 'else' !IdentifierPart _ Statement)? {
@@ -1132,12 +1255,22 @@ IterationStatement
     / 'do' !IdentifierPart _ body:Statement _ 'while' !IdentifierPart _ &!'(' _ test:Expression _ &!')' _ &!';' {
         return new AST.DoWhileStatement(getLocation(), body, test);
     }
+    / 'for' !IdentifierPart _ &!'(' _ decl:RangeForDeclaration _ ':' _ range:Expression _ &!')' _ body:Statement {
+        return new AST.RangeForStatement(getLocation(), decl, range, body);
+    }
     / 'for' !IdentifierPart _ &!'(' _ init:(Declaration / expression:Expression? _ ';' {
         return expression;
     } / (DeclarationWithoutSemicolon / Expression) {
         error('Missing \\';\\'');
     }) _ test:Expression? _ &!';' _ update:Expression? _ &!')' _ body:Statement {
         return new AST.ForStatement(getLocation(), init, test, update, body);
+    }
+
+RangeForDeclaration
+    = specifiers:DeclarationSpecifiers _ declarator:Declarator {
+        return new AST.Declaration(getLocation(), specifiers, [
+            new AST.InitDeclarator(getLocation(), declarator, null)
+        ]);
     }
 
 JumpStatement
@@ -1158,6 +1291,7 @@ JumpStatement
 UsingStatements
     = 'using' _ name:Identifier _ '=' _ decl:TypeName _ ';'{
         currScope.names.set(name.getLastID().name, TYPE_NAME);
+        globalMap.set(name.getLastID().name, TYPE_NAME);
         return new AST.UsingStatement(getLocation(), name, decl);
     }
     / 'using' _ name:(Identifier/TypeIdentifier/TemplateClassIdentifier/TemplateFuncIdentifier) _ ';'{
@@ -1170,7 +1304,7 @@ TemplateDeclaration
     = 'template' _ '<' _ &{
         enterScope();
         return true;
-    } param:TemplateParameterList? _ &!'>' _ decl:(ClassSpecifierWithSemi/FunctionDefinition) {
+    } param:TemplateParameterList? _ &!'>' _ decl:(ClassSpecifierWithSemi/FunctionDefinition/UsingStatements) {
         exitScope();
         const result = new AST.TemplateDeclaration(getLocation(), decl, param || []);
         const names = result.getTemplateNames();
@@ -1198,8 +1332,12 @@ TypeNameKeyword = 'class' / 'typename'
 
 // TODO:: identifier is optional?
 TypeParameter
-    = TypeNameKeyword _ id:TypeDeclarationIdentifier init:( _ '=' _ TypeName)? {
-        return new AST.TypeParameter(getLocation(), id, init ? init[3] : null);
+    = TypeNameKeyword _ id:Id init:( _ '=' _ TypeName)? {
+        id.type = AST.IDType.TYPE;
+        currScope.names.set(id.name, TYPE_NAME);
+        return new AST.TypeParameter(getLocation(),
+            new AST.Identifier(getLocation(), [id], false),
+            init ? init[3] : null);
     }
 
 TemplateFuncInstanceIdentifier
@@ -1231,8 +1369,14 @@ TemplateArgument
 
 ExplicitInstantiation
     = FunctionTemplateInstantiation
+    / ClassTemplateInstantiation
 
 FunctionTemplateInstantiation
     = 'template' _ specifiers:DeclarationSpecifiers _ declarator:Declarator _ ';'{
         return new AST.FunctionTemplateInstantiation(getLocation(), specifiers, declarator);
+    }
+
+ClassTemplateInstantiation
+    = 'template' _ spec:ClassSpecifier _ ';'{
+        return new AST.ClassTemplateInstantiation(getLocation(), spec);
     }`        

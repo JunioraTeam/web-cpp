@@ -1,0 +1,119 @@
+#ifndef _IOSTREAM
+#define _IOSTREAM
+
+#include <stdio.h>
+#include <syscall.h>
+#include <string>
+#include <utility>
+
+__libcall void __cout_str(char *value);
+
+namespace std {
+
+class istream {
+public:
+    istream& operator>>(char& value) {
+        int temp = getchar();
+        while (temp == ' ' || temp == '\n' || temp == '\t') {
+            temp = getchar();
+        }
+        if (temp == -1) {
+            __input_error("EOF when reading from stdin");
+        }
+        value = temp;
+        return *this;
+    }
+
+    istream& operator>>(int& value) {
+        int temp;
+        if (scanf("%d", &temp) != 1) {
+            __input_error("EOF when reading from stdin");
+        }
+        value = temp;
+        return *this;
+    }
+};
+
+class ostream {
+public:
+    ostream& operator<<(char *value) {
+        __cout_str(value);
+        return *this;
+    }
+
+    ostream& operator<<(string& value) {
+        __cout_str(value.c_str());
+        return *this;
+    }
+
+    ostream& operator<<(char value) {
+        char buffer[1];
+        buffer[0] = value;
+        write(1, buffer, 1);
+        return *this;
+    }
+
+    ostream& operator<<(bool value) {
+        printf("%d", value);
+        return *this;
+    }
+
+    ostream& operator<<(short value) {
+        printf("%d", value);
+        return *this;
+    }
+
+    ostream& operator<<(unsigned short value) {
+        printf("%u", value);
+        return *this;
+    }
+
+    ostream& operator<<(int value) {
+        printf("%d", value);
+        return *this;
+    }
+
+    ostream& operator<<(unsigned int value) {
+        printf("%u", value);
+        return *this;
+    }
+
+    ostream& operator<<(long long value) {
+        printf("%ld", value);
+        return *this;
+    }
+
+    ostream& operator<<(unsigned long long value) {
+        printf("%lu", value);
+        return *this;
+    }
+
+    ostream& operator<<(float value) {
+        printf("%f", value);
+        return *this;
+    }
+
+    ostream& operator<<(double value) {
+        printf("%f", value);
+        return *this;
+    }
+
+    ostream& operator<<(ostream& (*manipulator)(ostream&)) {
+        manipulator(*this);
+        return *this;
+    }
+};
+
+ostream& endl(ostream& stream) {
+    char buffer[1];
+    buffer[0] = '\n';
+    write(1, buffer, 1);
+    return stream;
+}
+
+ostream cout;
+istream cin;
+
+}
+
+#endif

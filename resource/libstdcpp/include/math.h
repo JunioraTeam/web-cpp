@@ -37,4 +37,11 @@ __libcall double sinh(double);
 __libcall double sqrt(double);
 __libcall double trunc(double);
 
+#ifndef _CPP_INT_SQRT_OVERLOAD
+#define _CPP_INT_SQRT_OVERLOAD
+int sqrt(int value) {
+    return (int) sqrt((double) value);
+}
+#endif
+
 #endif

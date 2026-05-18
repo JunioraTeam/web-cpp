@@ -8,9 +8,90 @@ import {PreprocessError} from "../common/error";
 import {Headers} from "../library";
 import {Marco, Position, PreprocessContext, PreprocessStatus} from "./context";
 
+function parseDirectiveName(line: string) {
+    const match = /^#\s*([A-Za-z_]\w*)?/.exec(line);
+    if (!match) {
+        return "";
+    }
+    return match[1] ? "#" + match[1] : "#";
+}
+
+function stripDirective(line: string, directive: string) {
+    return line.slice(directive.length).trim();
+}
+
+function replaceDefinedOperators(expression: string, ctx: PreprocessContext) {
+    return expression
+        .replace(/\bdefined\s*\(\s*([A-Za-z_]\w*)\s*\)/g, (match, name) =>
+            ctx.marcoMap.has(name) ? "1" : "0")
+        .replace(/\bdefined\s+([A-Za-z_]\w*)/g, (match, name) =>
+            ctx.marcoMap.has(name) ? "1" : "0");
+}
+
+function expandObjectMacroForIf(token: string, ctx: PreprocessContext) {
+    const marco = ctx.marcoMap.get(token);
+    if (!marco || marco.parameters !== null) {
+        return "0";
+    }
+    const target = marco.target.trim();
+    return /^[-+]?\d+$/.test(target) ? target : "0";
+}
+
+function evaluatePreprocessExpression(ctx: PreprocessContext, expression: string) {
+    const replacedDefined = replaceDefinedOperators(expression, ctx);
+    const normalized = replacedDefined.replace(/[A-Za-z_]\w*/g, (token) => expandObjectMacroForIf(token, ctx));
+    if (!/^[\d\s()+\-*/%!<>=&|^~?:.]+$/.test(normalized)) {
+        throw new PreprocessError(`illegal #if expression: ${expression}`);
+    }
+    try {
+        // The expression has been reduced to numeric literals and operators only.
+        return !!Function(`"use strict"; return (${normalized});`)();
+    } catch (e) {
+        throw new PreprocessError(`illegal #if expression: ${expression}`);
+    }
+}
+
+function enterConditional(ctx: PreprocessContext, matched: boolean) {
+    const parentSkipBlock = ctx.skipBlock;
+    const skipBlock = parentSkipBlock || !matched;
+    ctx.status.push({
+        status: PreprocessStatus.ON_IF,
+        parentSkipBlock,
+        branchMatched: matched && !parentSkipBlock,
+        skipBlock,
+    });
+    ctx.skipBlock = skipBlock;
+}
+
+function currentConditional(ctx: PreprocessContext, directive: string) {
+    if (ctx.status.length === 0) {
+        throw new PreprocessError(`unmatch ${directive}`);
+    }
+    return ctx.status[ctx.status.length - 1];
+}
+
+function parseLineDirective(ctx: PreprocessContext, line: string, nextSourceLine: number) {
+    const match = /^#line\s+(\d+)(?:\s+("([^"]+)"|[^\s]+))?\s*$/.exec(line);
+    if (!match) {
+        throw new PreprocessError(`illegal line directive: ${line}`);
+    }
+    ctx.setLine(nextSourceLine, Number.parseInt(match[1], 10), match[3]);
+}
+
+function quoteStringLiteral(value: string) {
+    return JSON.stringify(value);
+}
+
+function replaceBuiltinMacros(ctx: PreprocessContext, str: string, sourceLocation: Position) {
+    return str
+        .replace(/\b__LINE__\b/g, () => String(ctx.getLogicalLine(sourceLocation.line)))
+        .replace(/\b__FILE__\b/g, () => quoteStringLiteral(ctx.sourceFileName));
+}
+
 function doPreprocessCommand(ctx: PreprocessContext, line: string, lineIdx: number) {
+    const directive = parseDirectiveName(line);
     const tokens = line.split(/\s|<|"/);
-    if (tokens[0] === "#define") {
+    if (directive === "#define") {
         if (!ctx.skipBlock) {
             const match = /#define\s+([a-zA-Z0-9_]+)\s*(\(([^)]*)\))?\s*(\s.+)?\s*$/.exec(line);
             if (!match) {
@@ -24,7 +105,7 @@ function doPreprocessCommand(ctx: PreprocessContext, line: string, lineIdx: numb
                 ctx.defineMarco(match[1], null, "");
             }
         }
-    } else if (tokens[0] === "#undef") {
+    } else if (directive === "#undef") {
         if (!ctx.skipBlock) {
             if (tokens.length !== 2) {
                 throw new PreprocessError(`illegal undefine: ${line}`);
@@ -32,7 +113,7 @@ function doPreprocessCommand(ctx: PreprocessContext, line: string, lineIdx: numb
                 ctx.undefineMarco(tokens[1]);
             }
         }
-    } else if (tokens[0] === "#include") {
+    } else if (directive === "#include") {
         if (!ctx.skipBlock) {
             let fileName = "";
             if (line.includes("\"")) {
@@ -62,60 +143,55 @@ function doPreprocessCommand(ctx: PreprocessContext, line: string, lineIdx: numb
             const {code} = doPreprocess(fileName, header, ctx.marcoMap);
             ctx.append(code, {line: lineIdx, column: 0});
         }
-    } else if (tokens[0] === "#if") {
-        throw new PreprocessError(`unsupport #if`);
-    } else if (tokens[0] === "#elif") {
-        throw new PreprocessError(`unsupport #elif`);
-    } else if (tokens[0] === "#ifdef") {
-        if (ctx.marcoMap.has(tokens[1])) {
-            ctx.skipBlock = false;
-            ctx.status.push([PreprocessStatus.ON_IF, false]);
-        } else {
-            ctx.skipBlock = true;
-            ctx.status.push([PreprocessStatus.ON_IF, true]);
+    } else if (directive === "#if") {
+        enterConditional(ctx, !ctx.skipBlock && evaluatePreprocessExpression(ctx, stripDirective(line, directive)));
+    } else if (directive === "#elif") {
+        const item = currentConditional(ctx, directive);
+        if (item.status === PreprocessStatus.ON_ELSE) {
+            throw new PreprocessError(`unmatch #elif`);
         }
-    } else if (tokens[0] === "#ifndef") {
-        if (!ctx.marcoMap.has(tokens[1])) {
-            ctx.skipBlock = false;
-            ctx.status.push([PreprocessStatus.ON_IF, false]);
-        } else {
-            ctx.skipBlock = true;
-            ctx.status.push([PreprocessStatus.ON_IF, true]);
-        }
-    } else if (tokens[0] === "#else") {
-        if (ctx.status.length > 0 &&
-            ctx.status[ctx.status.length - 1][0] === PreprocessStatus.ON_IF) {
-            const item = ctx.status[ctx.status.length - 1];
-            ctx.skipBlock = !item[1];
-            item[0] = PreprocessStatus.ON_ELSE;
-        } else {
+        const matched = !item.parentSkipBlock && !item.branchMatched
+            && evaluatePreprocessExpression(ctx, stripDirective(line, directive));
+        item.status = PreprocessStatus.ON_ELIF;
+        item.skipBlock = item.parentSkipBlock || item.branchMatched || !matched;
+        item.branchMatched = item.branchMatched || matched;
+        ctx.skipBlock = item.skipBlock;
+    } else if (directive === "#ifdef") {
+        enterConditional(ctx, !ctx.skipBlock && ctx.marcoMap.has(tokens[1]));
+    } else if (directive === "#ifndef") {
+        enterConditional(ctx, !ctx.skipBlock && !ctx.marcoMap.has(tokens[1]));
+    } else if (directive === "#else") {
+        const item = currentConditional(ctx, directive);
+        if (item.status === PreprocessStatus.ON_ELSE) {
             throw new PreprocessError(`unmatch #else`);
         }
-    } else if (tokens[0] === "#endif") {
+        item.status = PreprocessStatus.ON_ELSE;
+        item.skipBlock = item.parentSkipBlock || item.branchMatched;
+        item.branchMatched = true;
+        ctx.skipBlock = item.skipBlock;
+    } else if (directive === "#endif") {
         if (ctx.status.length > 0) {
-            const item = ctx.status.pop()!;
-            if (ctx.status.length > 0) {
-                ctx.skipBlock = ctx.status[ctx.status.length - 1][1];
-            } else {
-                ctx.skipBlock = false;
-            }
+            ctx.status.pop()!;
+            ctx.skipBlock = ctx.status.length > 0 ? ctx.status[ctx.status.length - 1].skipBlock : false;
         } else {
             throw new PreprocessError(`unmatch #endif`);
         }
-    } else if (tokens[0] === "#line") {
-        throw new PreprocessError(`unsupport #line`);
-    } else if (tokens[0] === "#error") {
+    } else if (directive === "#line") {
+        if (!ctx.skipBlock) {
+            parseLineDirective(ctx, line, lineIdx + 1);
+        }
+    } else if (directive === "#error") {
         throw new PreprocessError(`Error : ${line}`);
-    } else if (tokens[0] === "#progma") {
+    } else if (directive === "#progma") {
         return;
-    } else if (tokens[0] === "#") {
+    } else if (directive === "#") {
         return;
     } else {
         throw new PreprocessError(`unsupport directive ${line}`);
     }
 }
 
-const Tokenizer = /([\\~!@#$|%^&*()+-={}[\]:";'<>?,.\/]|[A-Za-z_0-9]+|"[^"]*"|'[^']*'|\n|[ \t]+)/y;
+const Tokenizer = /("[^"]*"|'[^']*'|[\\~!@#$|%^&*()+-={}[\]:";'<>?,.\/]|[A-Za-z_0-9]+|\n|[ \t]+)/y;
 
 function tokenize(str: string): string[] {
     let match = Tokenizer.exec(str);
@@ -233,6 +309,12 @@ function preprocessBlock(ctx: PreprocessContext, line: string, blockStartLine: n
             updateSourceMap(token);
             continue;
         }
+        if ((token.charAt(0) === "\"" && token.charAt(token.length - 1) === "\"")
+            || (token.charAt(0) === "'" && token.charAt(token.length - 1) === "'")) {
+            buffer += token;
+            updateSourceMap(token);
+            continue;
+        }
         const item = ctx.marcoMap.get(token);
 
         function nextToken() {
@@ -249,7 +331,7 @@ function preprocessBlock(ctx: PreprocessContext, line: string, blockStartLine: n
         if (item) {
             if (item.parameters === null) {
                 submitBuffer();
-                buffer = item.target;
+                buffer = replaceBuiltinMacros(ctx, item.target, sourceLocation);
                 updateSourceMap(token);
                 submitBuffer();
             } else {
@@ -303,13 +385,18 @@ function preprocessBlock(ctx: PreprocessContext, line: string, blockStartLine: n
                     argus.push(subBuffer);
                 }
                 submitBuffer();
-                buffer = doMarcoReplace(item, argus);
+                buffer = replaceBuiltinMacros(ctx, doMarcoReplace(item, argus), savedSourceLocation);
                 for (let j = savedI; j <= i; j++) {
                     updateSourceMap(tokens[j]);
                 }
                 submitBuffer();
                 continue;
             }
+        } else if (token === "__LINE__" || token === "__FILE__") {
+            submitBuffer();
+            buffer = replaceBuiltinMacros(ctx, token, sourceLocation);
+            updateSourceMap(token);
+            submitBuffer();
         } else if (token === "/" && tokens[i + 1] === "/") {
             submitBuffer();
             onSkip = 1;
@@ -340,7 +427,7 @@ function doPreprocess(fileName: string, source: string, marcoMap: Map<string, Ma
         line = line + lines[i];
         if (line.charAt(line.length - 1) === "\\") {
             line = line.substring(0, line.length - 1);
-        } else if (line.charAt(0) === "#") {
+        } else if (line.trimLeft().charAt(0) === "#") {
             if (ctx.onMultiLineComment) {
                 block += line + "\n";
                 line = "";
@@ -351,7 +438,7 @@ function doPreprocess(fileName: string, source: string, marcoMap: Map<string, Ma
                     }
                     block = "";
                 }
-                doPreprocessCommand(ctx, line, i);
+                doPreprocessCommand(ctx, line.trimLeft(), i);
                 line = "";
                 blockStartLine = i + 1;
             }

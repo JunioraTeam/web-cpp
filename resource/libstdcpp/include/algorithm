@@ -1,0 +1,268 @@
+#ifndef _CPP_ALGORITHM
+#define _CPP_ALGORITHM
+
+__libcall int tolower(int);
+
+namespace std {
+
+#ifndef _CPP_SWAP_FUNCTION
+#define _CPP_SWAP_FUNCTION
+template<typename SwapT>
+void swap(SwapT& left, SwapT& right) {
+    SwapT temp = left;
+    left = right;
+    right = temp;
+}
+#endif
+
+template<typename MinT>
+MinT min(MinT left, MinT right) {
+    if (right < left) {
+        return right;
+    }
+    return left;
+}
+
+template<typename MinCompareT>
+MinCompareT min(MinCompareT& left, MinCompareT& right, bool (*comp)(const MinCompareT&, const MinCompareT&)) {
+    if (comp(right, left)) {
+        return right;
+    }
+    return left;
+}
+
+template<typename MaxT>
+MaxT max(MaxT left, MaxT right) {
+    if (left < right) {
+        return right;
+    }
+    return left;
+}
+
+template<typename MaxCompareT>
+MaxCompareT max(MaxCompareT& left, MaxCompareT& right, bool (*comp)(const MaxCompareT&, const MaxCompareT&)) {
+    if (comp(left, right)) {
+        return right;
+    }
+    return left;
+}
+
+template<typename FindT>
+FindT *find(FindT *first, FindT *last, FindT value) {
+    int length = last - first;
+    for (int i = 0; i < length; i++) {
+        if (first[i] == value) {
+            return first + i;
+        }
+    }
+    return last;
+}
+
+int *find(int *first, int *last, int value) {
+    int length = last - first;
+    for (int i = 0; i < length; i++) {
+        if (first[i] == value) {
+            return first + i;
+        }
+    }
+    return last;
+}
+
+template<typename CountT>
+int count(CountT *first, CountT *last, CountT value) {
+    int result = 0;
+    int length = last - first;
+    for (int i = 0; i < length; i++) {
+        if (first[i] == value) {
+            result = result + 1;
+        }
+    }
+    return result;
+}
+
+int count(int *first, int *last, int value) {
+    int result = 0;
+    int length = last - first;
+    for (int i = 0; i < length; i++) {
+        if (first[i] == value) {
+            result = result + 1;
+        }
+    }
+    return result;
+}
+
+template<typename DistanceT>
+int distance(DistanceT *first, DistanceT *last) {
+    return last - first;
+}
+
+template<typename UniqueT>
+UniqueT *unique(UniqueT *first, UniqueT *last) {
+    if (first == last) {
+        return last;
+    }
+    UniqueT *result = first;
+    UniqueT *current = first + 1;
+    while (current != last) {
+        if (!(*result == *current)) {
+            result = result + 1;
+            *result = *current;
+        }
+        current = current + 1;
+    }
+    return result + 1;
+}
+
+template<typename LowerBoundT>
+LowerBoundT *lower_bound(LowerBoundT *first, LowerBoundT *last, LowerBoundT value) {
+    while (first != last) {
+        if (!(*first < value)) {
+            return first;
+        }
+        first = first + 1;
+    }
+    return last;
+}
+
+template<typename LowerBoundT, typename LowerBoundValueT>
+LowerBoundT *lower_bound(LowerBoundT *first, LowerBoundT *last, LowerBoundValueT value,
+                         bool (*comp)(const LowerBoundT&, const LowerBoundT&)) {
+    LowerBoundT actual_value = value;
+    while (first != last) {
+        if (!comp(*first, actual_value)) {
+            return first;
+        }
+        first = first + 1;
+    }
+    return last;
+}
+
+template<typename UpperBoundT>
+UpperBoundT *upper_bound(UpperBoundT *first, UpperBoundT *last, UpperBoundT value) {
+    while (first != last) {
+        if (value < *first) {
+            return first;
+        }
+        first = first + 1;
+    }
+    return last;
+}
+
+template<typename BinarySearchT>
+bool binary_search(BinarySearchT *first, BinarySearchT *last, BinarySearchT value) {
+    while (first != last) {
+        if (!(*first < value) && !(value < *first)) {
+            return 1;
+        }
+        first = first + 1;
+    }
+    return 0;
+}
+
+template<typename LexicographicalT>
+bool lexicographical_compare(LexicographicalT *first1, LexicographicalT *last1,
+                             LexicographicalT *first2, LexicographicalT *last2) {
+    while (first1 != last1 && first2 != last2) {
+        if (*first1 < *first2) {
+            return 1;
+        }
+        if (*first2 < *first1) {
+            return 0;
+        }
+        first1 = first1 + 1;
+        first2 = first2 + 1;
+    }
+    return first1 == last1 && first2 != last2;
+}
+
+template<typename LexicographicalT>
+bool lexicographical_compare(LexicographicalT *first1, LexicographicalT *last1,
+                             LexicographicalT *first2, LexicographicalT *last2,
+                             bool (*comp)(LexicographicalT, LexicographicalT)) {
+    while (first1 != last1 && first2 != last2) {
+        if (comp(*first1, *first2)) {
+            return 1;
+        }
+        if (comp(*first2, *first1)) {
+            return 0;
+        }
+        first1 = first1 + 1;
+        first2 = first2 + 1;
+    }
+    return first1 == last1 && first2 != last2;
+}
+
+template<typename MaxElementT>
+MaxElementT *max_element(MaxElementT *first, MaxElementT *last) {
+    if (first == last) {
+        return last;
+    }
+    MaxElementT *result = first;
+    first = first + 1;
+    while (first != last) {
+        if (*result < *first) {
+            result = first;
+        }
+        first = first + 1;
+    }
+    return result;
+}
+
+template<typename ReverseT>
+void reverse(ReverseT *first, ReverseT *last) {
+    int length = last - first;
+    for (int i = 0; i < length / 2; i++) {
+        int other = length - i - 1;
+        ReverseT temp = first[i];
+        first[i] = first[other];
+        first[other] = temp;
+    }
+}
+
+template<typename MoveInputT, typename MoveOutputT>
+MoveOutputT *move(MoveInputT *first, MoveInputT *last, MoveOutputT *result) {
+    while (first != last) {
+        *result = *first;
+        first = first + 1;
+        result = result + 1;
+    }
+    return result;
+}
+
+template<typename ReplaceT>
+void replace(ReplaceT *first, ReplaceT *last, ReplaceT old_value, ReplaceT new_value) {
+    while (first != last) {
+        if (*first == old_value) {
+            *first = new_value;
+        }
+        first = first + 1;
+    }
+}
+
+template<typename ReplaceIfT>
+void replace_if(ReplaceIfT *first, ReplaceIfT *last, bool (*pred)(ReplaceIfT), ReplaceIfT new_value) {
+    while (first != last) {
+        if (pred(*first)) {
+            *first = new_value;
+        }
+        first = first + 1;
+    }
+}
+
+template<typename SortT>
+void sort(SortT *first, SortT *last) {
+    int length = last - first;
+    for (int i = 0; i < length; i++) {
+        for (int j = i + 1; j < length; j++) {
+            if (first[j] < first[i]) {
+                SortT temp = first[i];
+                first[i] = first[j];
+                first[j] = temp;
+            }
+        }
+    }
+}
+
+}
+
+#endif

@@ -109,7 +109,7 @@ For other WSection, you could refer to the official standard
 of WebAssembly.
 
 
-# Road Map
+# Roadmap
 
 ## Version
 
@@ -117,7 +117,7 @@ of WebAssembly.
 - [X] 0.5 With interpreter runtime
 - [X] 0.6 With function template
 - [X] 0.7 With class template
-- [ ] 0.8 With std library (some)
+- [X] 0.8 With std library (some)
 
 ## C language
 
@@ -133,7 +133,7 @@ of WebAssembly.
 - [X] union
 - [X] js native function
 - [X] string
-- [X] var initilizer
+- [X] var initializer
 - [X] data segment data
 - [X] doConstant about < > <= >= == & && | || >> << ...
 - [X] struct / class
@@ -167,9 +167,9 @@ of WebAssembly.
 - [X] function pointer
 - [X] array initial list
 - [X] multi-dim array
-- [ ] bit field of struct
-- [ ] #if #elif
-- [ ] #line __line__ __file__
+- [X] bit field of struct
+- [X] #if #elif
+- [X] #line __line__ __file__
 - [X] debuginfo
 ## C++ Language
 - [X] default parameter
@@ -191,10 +191,10 @@ of WebAssembly.
 - [X] function overload
 - [X] member function overload
 - [X] __cxx_global_var_init
-- [X] inheriant
+- [X] inherit
 - [X] operator overload => working, bin->ok, unary->working, syntax
-- [X] implict this
-- [ ] public/private/ protect, access control (syntax ok, todo)
+- [X] implicit this
+- [X] public/private/ protect, access control (syntax ok, todo)
 - [X] new/delete
 - [X] new array []
 - [X] using
@@ -210,40 +210,40 @@ of WebAssembly.
 
 ## TODO LIST
     High
-- [X] repeative param name detect
-- [ ] cast overload， like if(object) { ... }
-- [ ] warning
+- [X] repetitive param name detect
+- [X] cast overload， like if(object) { ... }
+- [X] warning
 - [X] class specialization
-- [ ] using template
-- [ ] A a[50] decons
-- [ ] subclass B A::a => set children?
+- [X] using template
+- [X] A a[50] decons
+- [X] subclass B A::a => set children?
 - [X] explicit class ins
-- [ ] placement new
+- [X] placement new
 - [X] C std lib
-- [ ] C++ std lib
-- [ ] iostream∂
-- [ ] string
-- [ ] vector
-- [ ] map
-- [ ] queue/stack
-- [ ] priority_queue
-- [ ] algorithm
-- [ ] id could not be keyword => special judge
+- [X] C++ std lib
+- [X] iostream
+- [X] string
+- [X] vector
+- [X] map
+- [X] queue/stack
+- [X] priority_queue
+- [X] algorithm
+- [X] id could not be keyword => special judge
 - [X] operator []
 - [x] operator ()
-- [ ] static_cast / dynamic_cast / reinterpret_cast
-- [ ] const left value reference
+- [X] static_cast / dynamic_cast / reinterpret_cast
+- [X] const left value reference
 ====== the upper is all plan of web-cpp in 2019
 
     Other
-- [ ] const/override member function
-- [ ] real const
-- [ ] real override
-- [ ] real accessControl
-- [ ] seperate define class function
-- [ ] seperate delaration => to be test
-- [ ] typeinfo
-- [ ] virtual inheriant
+- [X] const/override member function
+- [X] real const
+- [X] real override
+- [X] real accessControl
+- [X] separate define class function
+- [X] separate declaration => to be test
+- [X] typeinfo
+- [X] virtual inherit
 ## ide
 - [X] multi-language
 - [X] config
@@ -252,7 +252,4 @@ of WebAssembly.
 
 ## Miscellaneous
 
-This project is my thesis of my bachelor's degree, which is inspired by
-the rapid development of online programing education. This project is
-targeted to improve the C++ learning experience for new students,
-thanks to everyone who helps me in the development of this project.
+This project is my thesis of my bachelor's degree, which is inspired by the rapid development of online programming education. This project is targeted to improve the C++ learning experience for new students, thanks to everyone who helps me in the development of this project.

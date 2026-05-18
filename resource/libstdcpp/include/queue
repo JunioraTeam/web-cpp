@@ -1,0 +1,607 @@
+#ifndef _CPP_QUEUE
+#define _CPP_QUEUE
+
+__libcall void __container_error(char *message);
+
+namespace std {
+
+template<typename T>
+class queue {
+    T *data_;
+    int size_;
+    int capacity_;
+
+    void grow() {
+        int new_capacity = capacity_ * 2;
+        T *new_data = new T[new_capacity];
+        for (int i = 0; i < size_; i++) {
+            new_data[i] = data_[i];
+        }
+        delete[] data_;
+        data_ = new_data;
+        capacity_ = new_capacity;
+    }
+
+public:
+    queue() {
+        size_ = 0;
+        capacity_ = 4;
+        data_ = new T[capacity_];
+    }
+
+    bool empty() {
+        return size_ == 0;
+    }
+
+    int size() {
+        return size_;
+    }
+
+    void push(T value) {
+        if (size_ == capacity_) {
+            grow();
+        }
+        data_[size_] = value;
+        size_ = size_ + 1;
+    }
+
+    void pop() {
+        if (size_ == 0) {
+            __container_error("queue::pop on empty queue");
+        }
+        int last = size_ - 1;
+        for (int i = 0; i < last; i++) {
+            data_[i] = data_[i + 1];
+        }
+        size_ = size_ - 1;
+    }
+
+    T& front() {
+        if (size_ == 0) {
+            __container_error("queue::front on empty queue");
+        }
+        return data_[0];
+    }
+
+    T& back() {
+        if (size_ == 0) {
+            __container_error("queue::back on empty queue");
+        }
+        return data_[size_ - 1];
+    }
+};
+
+}
+
+namespace std {
+
+template<typename U>
+class stack {
+    U *data_;
+    int size_;
+    int capacity_;
+
+    void grow() {
+        int new_capacity = capacity_ * 2;
+        U *new_data = new U[new_capacity];
+        for (int i = 0; i < size_; i++) {
+            new_data[i] = data_[i];
+        }
+        delete[] data_;
+        data_ = new_data;
+        capacity_ = new_capacity;
+    }
+
+public:
+    stack() {
+        size_ = 0;
+        capacity_ = 4;
+        data_ = new U[capacity_];
+    }
+
+    bool empty() {
+        return size_ == 0;
+    }
+
+    int size() {
+        return size_;
+    }
+
+    void push(U value) {
+        if (size_ == capacity_) {
+            grow();
+        }
+        data_[size_] = value;
+        size_ = size_ + 1;
+    }
+
+    void pop() {
+        if (size_ == 0) {
+            __container_error("stack::pop on empty stack");
+        }
+        size_ = size_ - 1;
+    }
+
+    U& top() {
+        if (size_ == 0) {
+            __container_error("stack::top on empty stack");
+        }
+        return data_[size_ - 1];
+    }
+};
+
+}
+
+namespace std {
+
+template<typename V>
+class priority_queue {
+    V *data_;
+    int size_;
+    int capacity_;
+
+    void grow() {
+        int new_capacity = capacity_ * 2;
+        V *new_data = new V[new_capacity];
+        for (int i = 0; i < size_; i++) {
+            new_data[i] = data_[i];
+        }
+        delete[] data_;
+        data_ = new_data;
+        capacity_ = new_capacity;
+    }
+
+    bool less_than(V left, V right) {
+        return left < right;
+    }
+
+    void swap_at(int left, int right) {
+        V temp = data_[left];
+        data_[left] = data_[right];
+        data_[right] = temp;
+    }
+
+    void sift_up(int index) {
+        while (index > 0) {
+            int parent = (index - 1) / 2;
+            if (!less_than(data_[parent], data_[index])) {
+                return;
+            }
+            swap_at(parent, index);
+            index = parent;
+        }
+    }
+
+    void sift_down(int index) {
+        while (1) {
+            int left = index * 2 + 1;
+            int right = left + 1;
+            int largest = index;
+            if (left < size_ && less_than(data_[largest], data_[left])) {
+                largest = left;
+            }
+            if (right < size_ && less_than(data_[largest], data_[right])) {
+                largest = right;
+            }
+            if (largest == index) {
+                return;
+            }
+            swap_at(index, largest);
+            index = largest;
+        }
+    }
+
+public:
+    priority_queue() {
+        size_ = 0;
+        capacity_ = 4;
+        data_ = new V[capacity_];
+    }
+
+    bool empty() {
+        return size_ == 0;
+    }
+
+    int size() {
+        return size_;
+    }
+
+    void push(V value) {
+        if (size_ == capacity_) {
+            grow();
+        }
+        data_[size_] = value;
+        size_ = size_ + 1;
+        sift_up(size_ - 1);
+    }
+
+    void pop() {
+        if (size_ == 0) {
+            __container_error("priority_queue::pop on empty priority_queue");
+        }
+        data_[0] = data_[size_ - 1];
+        size_ = size_ - 1;
+        if (size_ > 0) {
+            sift_down(0);
+        }
+    }
+
+    V top() {
+        if (size_ == 0) {
+            __container_error("priority_queue::top on empty priority_queue");
+        }
+        return data_[0];
+    }
+};
+
+}
+
+#endif
+#ifndef _CPP_QUEUE
+#define _CPP_QUEUE
+
+namespace std {
+
+template<typename T>
+class queue {
+    T *data_;
+    int size_;
+    int capacity_;
+
+    void grow() {
+        int new_capacity = capacity_ * 2;
+        T *new_data = new T[new_capacity];
+        for (int i = 0; i < size_; i++) {
+            new_data[i] = data_[i];
+        }
+        delete[] data_;
+        data_ = new_data;
+        capacity_ = new_capacity;
+    }
+
+public:
+    queue() {
+        size_ = 0;
+        capacity_ = 4;
+        data_ = new T[capacity_];
+    }
+
+    bool empty() {
+        return size_ == 0;
+    }
+
+    int size() {
+        return size_;
+    }
+
+    void push(T value) {
+        if (size_ == capacity_) {
+            grow();
+        }
+        data_[size_] = value;
+        size_ = size_ + 1;
+    }
+
+    void pop() {
+        int last = size_ - 1;
+        for (int i = 0; i < last; i++) {
+            data_[i] = data_[i + 1];
+        }
+        if (size_ > 0) {
+            size_ = size_ - 1;
+        }
+    }
+
+    T& front() {
+        return data_[0];
+    }
+
+    T& back() {
+        return data_[size_ - 1];
+    }
+};
+
+}
+
+namespace std {
+
+template<typename U>
+class stack {
+    U *data_;
+    int size_;
+    int capacity_;
+
+    void grow() {
+        int new_capacity = capacity_ * 2;
+        U *new_data = new U[new_capacity];
+        for (int i = 0; i < size_; i++) {
+            new_data[i] = data_[i];
+        }
+        delete[] data_;
+        data_ = new_data;
+        capacity_ = new_capacity;
+    }
+
+public:
+    stack() {
+        size_ = 0;
+        capacity_ = 4;
+        data_ = new U[capacity_];
+    }
+
+    bool empty() {
+        return size_ == 0;
+    }
+
+    int size() {
+        return size_;
+    }
+
+    void push(U value) {
+        if (size_ == capacity_) {
+            grow();
+        }
+        data_[size_] = value;
+        size_ = size_ + 1;
+    }
+
+    void pop() {
+        if (size_ > 0) {
+            size_ = size_ - 1;
+        }
+    }
+
+    U& top() {
+        return data_[size_ - 1];
+    }
+};
+
+}
+
+namespace std {
+
+template<typename V>
+class priority_queue {
+    V *data_;
+    int size_;
+    int capacity_;
+
+    void grow() {
+        int new_capacity = capacity_ * 2;
+        V *new_data = new V[new_capacity];
+        for (int i = 0; i < size_; i++) {
+            new_data[i] = data_[i];
+        }
+        delete[] data_;
+        data_ = new_data;
+        capacity_ = new_capacity;
+    }
+
+    bool less_than(V left, V right) {
+        return left < right;
+    }
+
+    void swap_at(int left, int right) {
+        V temp = data_[left];
+        data_[left] = data_[right];
+        data_[right] = temp;
+    }
+
+    void sift_up(int index) {
+        while (index > 0) {
+            int parent = (index - 1) / 2;
+            if (!less_than(data_[parent], data_[index])) {
+                return;
+            }
+            swap_at(parent, index);
+            index = parent;
+        }
+    }
+
+    void sift_down(int index) {
+        while (1) {
+            int left = index * 2 + 1;
+            int right = left + 1;
+            int largest = index;
+            if (left < size_ && less_than(data_[largest], data_[left])) {
+                largest = left;
+            }
+            if (right < size_ && less_than(data_[largest], data_[right])) {
+                largest = right;
+            }
+            if (largest == index) {
+                return;
+            }
+            swap_at(index, largest);
+            index = largest;
+        }
+    }
+
+public:
+    priority_queue() {
+        size_ = 0;
+        capacity_ = 4;
+        data_ = new V[capacity_];
+    }
+
+    bool empty() {
+        return size_ == 0;
+    }
+
+    int size() {
+        return size_;
+    }
+
+    void push(V value) {
+        if (size_ == capacity_) {
+            grow();
+        }
+        data_[size_] = value;
+        size_ = size_ + 1;
+        sift_up(size_ - 1);
+    }
+
+    void pop() {
+        if (size_ == 0) {
+            return;
+        }
+        data_[0] = data_[size_ - 1];
+        size_ = size_ - 1;
+        if (size_ > 0) {
+            sift_down(0);
+        }
+    }
+
+    V top() {
+        return data_[0];
+    }
+};
+
+}
+
+#endif
+#ifndef _CPP_QUEUE
+#define _CPP_QUEUE
+
+#include <vector>
+
+namespace std {
+
+template<typename T>
+class queue {
+    vector<T> data_;
+
+public:
+    bool empty() {
+        return data_.empty();
+    }
+
+    int size() {
+        return data_.size();
+    }
+
+    void push(T value) {
+        data_.push_back(value);
+    }
+
+    void pop() {
+        int last = data_.size() - 1;
+        for (int i = 0; i < last; i++) {
+            data_[i] = data_[i + 1];
+        }
+        data_.pop_back();
+    }
+
+    T& front() {
+        return data_.front();
+    }
+
+    T& back() {
+        return data_.back();
+    }
+};
+
+template<typename T>
+class stack {
+    vector<T> data_;
+
+public:
+    bool empty() {
+        return data_.empty();
+    }
+
+    int size() {
+        return data_.size();
+    }
+
+    void push(T value) {
+        data_.push_back(value);
+    }
+
+    void pop() {
+        data_.pop_back();
+    }
+
+    T& top() {
+        return data_.back();
+    }
+};
+
+template<typename T>
+class priority_queue {
+    vector<T> data_;
+
+    bool less_than(T left, T right) {
+        return left < right;
+    }
+
+    void swap_at(int left, int right) {
+        T temp = data_[left];
+        data_[left] = data_[right];
+        data_[right] = temp;
+    }
+
+    void sift_up(int index) {
+        while (index > 0) {
+            int parent = (index - 1) / 2;
+            if (!less_than(data_[parent], data_[index])) {
+                return;
+            }
+            swap_at(parent, index);
+            index = parent;
+        }
+    }
+
+    void sift_down(int index) {
+        int count = data_.size();
+        while (1) {
+            int left = index * 2 + 1;
+            int right = left + 1;
+            int largest = index;
+            if (left < count && less_than(data_[largest], data_[left])) {
+                largest = left;
+            }
+            if (right < count && less_than(data_[largest], data_[right])) {
+                largest = right;
+            }
+            if (largest == index) {
+                return;
+            }
+            swap_at(index, largest);
+            index = largest;
+        }
+    }
+
+public:
+    bool empty() {
+        return data_.empty();
+    }
+
+    int size() {
+        return data_.size();
+    }
+
+    void push(T value) {
+        data_.push_back(value);
+        sift_up(data_.size() - 1);
+    }
+
+    void pop() {
+        if (data_.empty()) {
+            return;
+        }
+        data_[0] = data_.back();
+        data_.pop_back();
+        if (!data_.empty()) {
+            sift_down(0);
+        }
+    }
+
+    T& top() {
+        return data_.front();
+    }
+};
+
+}
+
+#endif

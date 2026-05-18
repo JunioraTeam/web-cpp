@@ -2,7 +2,7 @@ TemplateDeclaration
     = 'template' _ '<' _ &{
         enterScope();
         return true;
-    } param:TemplateParameterList? _ &!'>' _ decl:(ClassSpecifierWithSemi/FunctionDefinition) {
+    } param:TemplateParameterList? _ &!'>' _ decl:(ClassSpecifierWithSemi/FunctionDefinition/UsingStatements) {
         exitScope();
         const result = new AST.TemplateDeclaration(getLocation(), decl, param || []);
         const names = result.getTemplateNames();
@@ -30,8 +30,12 @@ TypeNameKeyword = 'class' / 'typename'
 
 // TODO:: identifier is optional?
 TypeParameter
-    = TypeNameKeyword _ id:TypeDeclarationIdentifier init:( _ '=' _ TypeName)? {
-        return new AST.TypeParameter(getLocation(), id, init ? init[3] : null);
+    = TypeNameKeyword _ id:Id init:( _ '=' _ TypeName)? {
+        id.type = AST.IDType.TYPE;
+        currScope.names.set(id.name, TYPE_NAME);
+        return new AST.TypeParameter(getLocation(),
+            new AST.Identifier(getLocation(), [id], false),
+            init ? init[3] : null);
     }
 
 TemplateFuncInstanceIdentifier

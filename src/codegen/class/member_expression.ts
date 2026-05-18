@@ -3,7 +3,7 @@ import {SourceLocation} from "../../common/node";
 import {Variable} from "../../common/symbol";
 import {Type} from "../../type";
 import {ClassType} from "../../type/class_type";
-import {LeftReferenceType, ReferenceType} from "../../type/compound_type";
+import {ConstType, LeftReferenceType, ReferenceType} from "../../type/compound_type";
 import {UnresolvedFunctionOverloadType} from "../../type/function_type";
 import {WConst, WType} from "../../wasm";
 import {WAddressHolder} from "../address";
@@ -40,19 +40,20 @@ export class MemberExpression extends Expression {
 
         left = doReferenceTransform(ctx, left, this);
 
-        if (!(left.isLeft && left.expr instanceof WAddressHolder)) {
+        if (!(left.expr instanceof WAddressHolder) || (!left.isLeft && !isRef)) {
             throw new InternalError(`unsupport rvalue of member expression`);
         }
 
-        if (!(left.type instanceof ClassType)) {
+        const classType = left.type instanceof ConstType ? left.type.elementType : left.type;
+        if (!(classType instanceof ClassType)) {
             throw new SyntaxError(`only struct/class could be get member`, this);
         }
 
-        const item = left.type.getMember(ctx, memberName);
+        const item = classType.getMember(ctx, memberName, this);
 
         if ( item === null ) {
             throw new SyntaxError(`name ${this.member.getLookupName(ctx)} is not on class `
-                + `${left.type.shortName}`, this);
+                + `${classType.shortName}`, this);
         } else if (item instanceof Variable) {
             // static field
             return {
@@ -62,7 +63,7 @@ export class MemberExpression extends Expression {
             };
         } else if (item instanceof FunctionLookUpResult) {
             item.instance = left.expr;
-            item.instanceType = left.type;
+            item.instanceType = classType;
             if (this.pointed || isRef) {
                 if ( memberName.includes("~") ) {
                     item.isDynamicCall = this.forceDynamic;
@@ -97,10 +98,13 @@ export class MemberExpression extends Expression {
         if ( rawType instanceof LeftReferenceType) {
             rawType = rawType.elementType;
         }
+        if ( rawType instanceof ConstType) {
+            rawType = rawType.elementType;
+        }
         if ( !(rawType instanceof ClassType)) {
             throw new SyntaxError(`only struct/class could be get member`, this);
         }
-        const item = rawType.getMember(ctx, memberName);
+        const item = rawType.getMember(ctx, memberName, this);
 
         if ( item === null ) {
             throw new SyntaxError(`name ${this.member.getLookupName(ctx)} is not on class ${rawType.shortName}`, this);

@@ -1,7 +1,7 @@
 import {InternalError, SyntaxError} from "../../common/error";
 import {Node, SourceLocation} from "../../common/node";
 import {FunctionEntity, Variable} from "../../common/symbol";
-import {ClassTemplate, FunctionTemplate} from "../../common/template";
+import {AliasTemplate, ClassTemplate, FunctionTemplate} from "../../common/template";
 import {Type} from "../../type";
 import {ClassType} from "../../type/class_type";
 import {CppFunctionType, UnresolvedFunctionOverloadType} from "../../type/function_type";
@@ -11,6 +11,7 @@ import {MemberExpression} from "../class/member_expression";
 import {CompileContext} from "../context";
 import {FunctionLookUpResult, LookUpResult} from "../scope";
 import {instantiateClassTemplate} from "../template/class_template_instantiation";
+import {instantiateAliasTemplate} from "../template/template_declaration";
 import {TemplateArgument} from "../template/template_argument";
 import {Expression, ExpressionResult} from "./expression";
 
@@ -78,7 +79,13 @@ export class Identifier extends Expression {
     }
 
     public getPlainName(ctx: CompileContext): string {
-        if (!(this.name.length === 1 && (this.name[0].type === IDType.ID || this.name[0].type === IDType.TYPE))) {
+        if (!(this.name.length === 1 && (
+            this.name[0].type === IDType.ID ||
+            this.name[0].type === IDType.TYPE ||
+            this.name[0].type === IDType.T_FUNC ||
+            this.name[0].type === IDType.T_CLASS ||
+            ((this.name[0].type === IDType.T_FUNC_INS || this.name[0].type === IDType.T_CLASS_INS) &&
+                this.name[0].args.length === 0)))) {
             throw new SyntaxError(`${this.getLookupName(ctx)} is not a valid identifier`, this);
         }
         return this.getShortName(ctx);
@@ -97,7 +104,7 @@ export class Identifier extends Expression {
     }
 
     public fillInBlank(ctx: CompileContext, args: TemplateArgument[],
-                       template: FunctionTemplate | ClassTemplate) {
+                       template: FunctionTemplate | ClassTemplate | AliasTemplate) {
         const templateArguments = args.map((x) => x.evaluate(ctx));
         while (templateArguments.length < template.templateParams.length) {
             const init = template.templateParams[templateArguments.length].init;
@@ -223,6 +230,9 @@ export class Identifier extends Expression {
         } else if (this.getLastID().type === IDType.T_FUNC) {
             throw new SyntaxError(`name ${lookupName} is a function template`, this);
         } else if (this.getLastID().type === IDType.T_FUNC_INS) {
+            if (this.getLastID().args.length === 0 && rawItem instanceof Variable) {
+                return rawItem.type;
+            }
             if (rawItem instanceof FunctionLookUpResult) {
                 rawItem.templateArguments = this.getLastID().args.map((arg) => arg.evaluate(ctx));
                 return new UnresolvedFunctionOverloadType(rawItem);
@@ -233,6 +243,10 @@ export class Identifier extends Expression {
         } else if (this.getLastID().type === IDType.T_CLASS) {
             throw new SyntaxError(`name ${lookupName} is a class template`, this);
         } else if (this.getLastID().type === IDType.T_CLASS_INS) {
+            if (rawItem instanceof AliasTemplate) {
+                const templateArguments = this.fillInBlank(ctx, this.getLastID().args, rawItem);
+                return instantiateAliasTemplate(ctx, rawItem, templateArguments, this);
+            }
             if (rawItem instanceof ClassTemplate) {
                 const templateArguments = this.fillInBlank(ctx, this.getLastID().args, rawItem);
                 const realName = lookupName + "<" + templateArguments.join(",") + ">";

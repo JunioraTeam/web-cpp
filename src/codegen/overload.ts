@@ -9,8 +9,8 @@ import {FunctionEntity} from "../common/symbol";
 import {FunctionTemplate} from "../common/template";
 import {Type} from "../type";
 import {ClassType} from "../type/class_type";
-import {PointerType, ReferenceType} from "../type/compound_type";
-import {FunctionType} from "../type/function_type";
+import {ConstType, PointerType, ReferenceType} from "../type/compound_type";
+import {FunctionType, UnresolvedFunctionOverloadType} from "../type/function_type";
 import {PrimitiveTypes} from "../type/primitive_type";
 import {CompileContext} from "./context";
 import {FunctionLookUpResult} from "./scope";
@@ -18,10 +18,21 @@ import {instantiateFunctionTemplate} from "./template/function_template_instanti
 import {deduceFunctionTemplateParameters} from "./template/template_deduce";
 
 export function doStrictTypeMatch(dst: Type, src: Type): boolean {
+    if (src instanceof UnresolvedFunctionOverloadType
+        && dst instanceof PointerType
+        && dst.elementType instanceof FunctionType) {
+        return true;
+    }
     if (dst instanceof ReferenceType) {
         dst = dst.elementType;
     }
     if (src instanceof ReferenceType) {
+        src = src.elementType;
+    }
+    if (dst instanceof ConstType) {
+        dst = dst.elementType;
+    }
+    if (src instanceof ConstType) {
         src = src.elementType;
     }
     return dst.equals(src);
@@ -32,6 +43,12 @@ export function doWeakTypeMatch(dst: Type, src: Type): boolean {
         dst = dst.elementType;
     }
     if (src instanceof ReferenceType) {
+        src = src.elementType;
+    }
+    if (dst instanceof ConstType) {
+        dst = dst.elementType;
+    }
+    if (src instanceof ConstType) {
         src = src.elementType;
     }
     return dst.compatWith(src);
@@ -140,8 +157,8 @@ export function doFunctionOverloadResolution(ctx: CompileContext,
             if (!item.instanceMap.get(signature)) {
                 // apply instance creation
                 instantiateFunctionTemplate(ctx, item, params, node);
-                return item.instanceMap.get(signature)!;
             }
+            return item.instanceMap.get(signature)!;
         }
     }
 

@@ -1,0 +1,128 @@
+#ifndef _CPP_STRING
+#define _CPP_STRING
+
+#include <string.h>
+#include <syscall.h>
+
+namespace std {
+
+class __string {
+    char *data_;
+    int size_;
+    int capacity_;
+
+    void init_empty() {
+        capacity_ = 1;
+        size_ = 0;
+        data_ = (char *) malloc(capacity_);
+        data_[0] = 0;
+    }
+
+    void ensure_capacity(int required) {
+        if (required <= capacity_) {
+            return;
+        }
+        int new_capacity = capacity_;
+        while (new_capacity < required) {
+            new_capacity = new_capacity * 2;
+        }
+        char *new_data = (char *) malloc(new_capacity);
+        memcpy(new_data, data_, size_ + 1);
+        free(data_);
+        data_ = new_data;
+        capacity_ = new_capacity;
+    }
+
+    void assign_cstr(char *value) {
+        int len = strlen(value);
+        ensure_capacity(len + 1);
+        memcpy(data_, value, len + 1);
+        size_ = len;
+    }
+
+public:
+    __string() {
+        init_empty();
+    }
+
+    __string(char *value) {
+        init_empty();
+        assign_cstr(value);
+    }
+
+    void operator=(char *value) {
+        assign_cstr(value);
+    }
+
+    int size() {
+        return size_;
+    }
+
+    int length() {
+        return size_;
+    }
+
+    char *begin() {
+        return data_;
+    }
+
+    char *end() {
+        return data_ + size_;
+    }
+
+    bool empty() {
+        return size_ == 0;
+    }
+
+    char *c_str() {
+        return data_;
+    }
+
+    char& operator[](int index) {
+        return data_[index];
+    }
+
+    void clear() {
+        size_ = 0;
+        data_[0] = 0;
+    }
+
+    void push_back(char value) {
+        ensure_capacity(size_ + 2);
+        data_[size_] = value;
+        size_ = size_ + 1;
+        data_[size_] = 0;
+    }
+
+    void append(char *value) {
+        int len = strlen(value);
+        ensure_capacity(size_ + len + 1);
+        memcpy(data_ + size_, value, len + 1);
+        size_ = size_ + len;
+    }
+
+    void operator+=(char *value) {
+        append(value);
+    }
+};
+
+
+typedef __string string;
+
+#ifdef _CPP_ALGORITHM
+string *lower_bound(string *first, string *last, char *value,
+                    bool (*comp)(const string&, const string&)) {
+    string actual_value = value;
+    while (first != last) {
+        if (!comp(*first, actual_value)) {
+            return first;
+        }
+        first = first + 1;
+    }
+    return last;
+}
+#endif
+
+}
+
+#endif

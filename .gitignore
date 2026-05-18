@@ -20,3 +20,6 @@ coverage/
 *.wat
 ide/.cache
 ide/dist
+.parcel-browser-test/
+.cache/
+.specstory/

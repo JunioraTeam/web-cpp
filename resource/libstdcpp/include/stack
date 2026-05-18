@@ -1,0 +1,6 @@
+#ifndef _CPP_STACK
+#define _CPP_STACK
+
+#include <queue>
+
+#endif

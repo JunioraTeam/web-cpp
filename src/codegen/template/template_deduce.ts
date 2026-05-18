@@ -1,8 +1,9 @@
 import {InternalError} from "../../common/error";
+import {FunctionEntity} from "../../common/symbol";
 import {FunctionTemplate} from "../../common/template";
 import {Type} from "../../type";
-import {ArrayType, LeftReferenceType, PointerType, ReferenceType, RightReferenceType} from "../../type/compound_type";
-import {FunctionType} from "../../type/function_type";
+import {ArrayType, ConstType, LeftReferenceType, PointerType, ReferenceType, RightReferenceType} from "../../type/compound_type";
+import {FunctionType, UnresolvedFunctionOverloadType} from "../../type/function_type";
 import {TemplateParameterPlaceHolderType} from "../../type/template_type";
 import {EvaluatedTemplateArgument} from "./template_argument";
 
@@ -17,6 +18,8 @@ export function deduceFunctionTypeOfTemplate(type: Type,
         return result;
     } else if (type instanceof PointerType) {
         return new PointerType(deduceFunctionTypeOfTemplate(type.elementType, params));
+    } else if (type instanceof ConstType) {
+        return new ConstType(deduceFunctionTypeOfTemplate(type.elementType, params));
     } else if (type instanceof RightReferenceType) {
         return new RightReferenceType(deduceFunctionTypeOfTemplate(type.elementType, params));
     } else if (type instanceof LeftReferenceType) {
@@ -108,12 +111,39 @@ export function tryMatchTemplateType(table: Array<EvaluatedTemplateArgument|null
     } else if (templateType instanceof PointerType) {
         if (instanceType instanceof PointerType) {
             tryMatchTemplateType(table, templateType.elementType, instanceType.elementType, weakMatch);
+        } else if (instanceType instanceof ArrayType) {
+            tryMatchTemplateType(table, templateType.elementType, instanceType.elementType, weakMatch);
+        } else if (templateType.elementType instanceof FunctionType
+            && instanceType instanceof UnresolvedFunctionOverloadType) {
+            const functions = instanceType.functionLookupResult.functions
+                .filter((item) => item instanceof FunctionEntity) as FunctionEntity[];
+            for (const func of functions) {
+                const trialTable = table.slice();
+                try {
+                    tryMatchTemplateType(trialTable, templateType.elementType, func.type, weakMatch);
+                    for (let i = 0; i < trialTable.length; i++) {
+                        table[i] = trialTable[i];
+                    }
+                    return;
+                } catch (e) {
+                    // Try the next overload candidate.
+                }
+            }
+            throw {};
         } else {
             throw {};
+        }
+    } else if (templateType instanceof ConstType) {
+        if (instanceType instanceof ConstType) {
+            tryMatchTemplateType(table, templateType.elementType, instanceType.elementType, weakMatch);
+        } else {
+            tryMatchTemplateType(table, templateType.elementType, instanceType, weakMatch);
         }
     } else if (templateType instanceof ReferenceType) {
         if (instanceType instanceof ReferenceType) {
             tryMatchTemplateType(table, templateType.elementType, instanceType.elementType, weakMatch);
+        } else if (templateType instanceof LeftReferenceType) {
+            tryMatchTemplateType(table, templateType.elementType, instanceType, weakMatch);
         } else {
             throw {};
         }

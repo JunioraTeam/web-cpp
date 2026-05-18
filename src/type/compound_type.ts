@@ -38,8 +38,12 @@ export abstract class CompoundType extends Type {
 }
 
 export class ConstType extends CompoundType {
+    get length() {
+        return this.elementType.length;
+    }
+
     public toString() {
-        return "const" + this.elementType.toString();
+        return "const " + this.elementType.toString();
     }
 
     public toWType() {
@@ -51,6 +55,9 @@ export class ConstType extends CompoundType {
     }
 
     public compatWith(type: Type): boolean {
+        if (this.elementType.compatWith(type)) {
+            return true;
+        }
         return this.elementType.equals(PrimitiveTypes.void)
             || (type instanceof PointerType && type.elementType.equals(PrimitiveTypes.void))
             || super.compatWith(type) ||

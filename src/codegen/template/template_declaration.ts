@@ -1,7 +1,8 @@
 import {InternalError, SyntaxError} from "../../common/error";
-import {ClassDirective, SourceLocation} from "../../common/node";
-import {ClassTemplate, FunctionTemplate} from "../../common/template";
-import {AccessControl} from "../../type";
+import {ClassDirective, Node, SourceLocation} from "../../common/node";
+import {AddressType, Variable} from "../../common/symbol";
+import {AliasTemplate, ClassTemplate, FunctionTemplate} from "../../common/template";
+import {AccessControl, Type} from "../../type";
 import {ClassType} from "../../type/class_type";
 import {UnresolvedFunctionOverloadType} from "../../type/function_type";
 import {TemplateParameterPlaceHolderType} from "../../type/template_type";
@@ -10,14 +11,16 @@ import {CompileContext} from "../context";
 import {FunctionDefinition} from "../function/function_definition";
 import {ParameterDeclaration} from "../function/parameter_declaration";
 import {getShortName} from "../scope";
+import {UsingStatement} from "../statement/using_statement";
+import {EvaluatedTemplateArgument} from "./template_argument";
 import {deduceFunctionTemplateParameters} from "./template_deduce";
 import {TemplateParameterDeclaration, TypeParameter} from "./type_parameter";
 
 export class TemplateDeclaration extends ClassDirective {
-    public decl: ClassSpecifier | FunctionDefinition;
+    public decl: ClassSpecifier | FunctionDefinition | UsingStatement;
     public args: TemplateParameterDeclaration[];
 
-    constructor(location: SourceLocation, decl: ClassSpecifier | FunctionDefinition,
+    constructor(location: SourceLocation, decl: ClassSpecifier | FunctionDefinition | UsingStatement,
                 args: TemplateParameterDeclaration[]) {
         super(location);
         this.decl = decl;
@@ -27,6 +30,8 @@ export class TemplateDeclaration extends ClassDirective {
     public getTemplateNames(): string[] {
         if (this.decl instanceof FunctionDefinition) {
             return [this.decl.declarator.getNameRequired().getLastID().name];
+        } else if (this.decl instanceof UsingStatement) {
+            return [this.decl.name.getLastID().name];
         } else {
             return [this.decl.identifier.getLastID().name];
         }
@@ -123,6 +128,28 @@ export class TemplateDeclaration extends ClassDirective {
         ctx.scopeManager.define(realName, classTemplate, this);
     }
 
+    public declareAliasTemplate(ctx: CompileContext): void {
+        if (!(this.decl instanceof UsingStatement) || this.decl.type === null) {
+            throw new InternalError(`public declareAliasTemplate(ctx: CompileContext): void `);
+        }
+        const savedContext = ctx.scopeManager.currentContext;
+        const classType = savedContext.scope.classType;
+        ctx.scopeManager.enterUnnamedScope(true);
+        this.loadTemplateParameters(ctx);
+        const realName = this.decl.name.getShortName(ctx);
+        const fullName = this.decl.name.getFullName(ctx);
+        const aliasTemplate = new AliasTemplate(
+            realName, fullName, ctx.fileName,
+            this.args.map((x) => x.getTemplateParameter(ctx)),
+            this.decl.type,
+            savedContext,
+            classType ? classType.accessControl : AccessControl.Public,
+        );
+        ctx.scopeManager.detachCurrentScope();
+        ctx.scopeManager.exitScope();
+        ctx.scopeManager.define(realName, aliasTemplate, this);
+    }
+
     public codegen(ctx: CompileContext): void {
         if (ctx.scopeManager.currentContext.scope.classType) {
             return; // skip in class
@@ -130,6 +157,8 @@ export class TemplateDeclaration extends ClassDirective {
         if (this.args.length === 0) {
             if (this.decl instanceof ClassSpecifier) {
                 this.declareClassTemplateSpecialization(ctx);
+            } else if (this.decl instanceof UsingStatement) {
+                throw new SyntaxError(`template alias specialization is unsupported`, this);
             } else {
                 this.declareFunctionTemplateSpecialization(ctx);
             }
@@ -137,6 +166,8 @@ export class TemplateDeclaration extends ClassDirective {
         } else {
             if (this.decl instanceof ClassSpecifier) {
                 this.declareClassTemplate(ctx);
+            } else if (this.decl instanceof UsingStatement) {
+                this.declareAliasTemplate(ctx);
             } else {
                 this.declareFunctionTemplate(ctx);
             }
@@ -161,6 +192,8 @@ export class TemplateDeclaration extends ClassDirective {
         if (this.args.length === 0) {
             if (this.decl instanceof ClassSpecifier) {
                 this.declareClassTemplateSpecialization(ctx);
+            } else if (this.decl instanceof UsingStatement) {
+                throw new SyntaxError(`template alias specialization is unsupported`, this);
             } else {
                 this.declareFunctionTemplateSpecialization(ctx);
             }
@@ -168,10 +201,38 @@ export class TemplateDeclaration extends ClassDirective {
         } else {
             if (this.decl instanceof ClassSpecifier) {
                 this.declareClassTemplate(ctx);
+            } else if (this.decl instanceof UsingStatement) {
+                this.declareAliasTemplate(ctx);
             } else {
                 this.declareFunctionTemplate(ctx);
             }
         }
     }
 
+}
+
+export function instantiateAliasTemplate(ctx: CompileContext,
+                                         aliasTemplate: AliasTemplate,
+                                         args: EvaluatedTemplateArgument[],
+                                         node: Node): Type {
+    ctx.scopeManager.enterSavedScope(aliasTemplate.scopeContext);
+    ctx.scopeManager.enterUnnamedScope(true);
+    for (let i = 0; i < args.length; i++) {
+        const name = aliasTemplate.templateParams[i].name;
+        const arg = args[i];
+        if (arg instanceof Type) {
+            ctx.scopeManager.define(name, arg, node);
+        } else {
+            ctx.scopeManager.define(name, new Variable(
+                name, ctx.scopeManager.getFullName(name), ctx.fileName,
+                aliasTemplate.templateParams[i].type, AddressType.CONSTANT, arg,
+                AccessControl.Public,
+            ), node);
+        }
+    }
+    const type = aliasTemplate.typeName.deduceType(ctx);
+    ctx.scopeManager.detachCurrentScope();
+    ctx.scopeManager.exitScope();
+    ctx.scopeManager.exitScope();
+    return type;
 }

@@ -19,6 +19,7 @@ export interface RuntimeOptions {
     memorySize: number;
     files: VMFile[];
     entry: string;
+    maxLoopIterations?: number;
 }
 
 export abstract class Runtime {
@@ -32,6 +33,8 @@ export abstract class Runtime {
     public importObjects: ImportObject;
     public files: VMFile[];
     public heapAllocator: HeapAllocator;
+    public loopIterations: number;
+    public maxLoopIterations: number;
 
     constructor(options: RuntimeOptions) {
         this.memoryBuffer = new ArrayBuffer(options.memorySize);
@@ -43,6 +46,9 @@ export abstract class Runtime {
         this.files = options.files;
         this.heapAllocator = new FastHeapAllocator();
         this.entry = options.entry;
+        this.loopIterations = 0;
+        this.maxLoopIterations = options.maxLoopIterations === undefined
+            ? 10000000 : options.maxLoopIterations;
     }
 
     public abstract async run(): Promise<void>;

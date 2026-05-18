@@ -8,10 +8,11 @@ import {Node} from "../common/node";
 import {AddressType} from "../common/symbol";
 import {Type} from "../type";
 import {ClassType} from "../type/class_type";
-import {ArrayType, LeftReferenceType, PointerType, ReferenceType} from "../type/compound_type";
+import {ArrayType, ConstType, LeftReferenceType, PointerType, ReferenceType} from "../type/compound_type";
 import {FunctionType, UnresolvedFunctionOverloadType} from "../type/function_type";
 import {
     ArithmeticType,
+    BoolType,
     FloatingType,
     FloatType, Int64Type,
     IntegerType,
@@ -19,10 +20,14 @@ import {
     UnsignedInt64Type, UnsignedIntegerType,
 } from "../type/primitive_type";
 import {WAddressHolder} from "./address";
+import {MemberExpression} from "./class/member_expression";
 import {CompileContext} from "./context";
+import {AnonymousExpression} from "./expression/anonymous_expression";
 import {ExpressionResult} from "./expression/expression";
+import {Identifier} from "./expression/identifier";
+import {CallExpression} from "./function/call_expression";
 import {doFunctionOverloadResolution} from "./overload";
-import {getTypeConvertOpe, WConst, WCovertOperation, WExpression, WGetFunctionAddress} from "../wasm";
+import {getTypeConvertOpe, I32Binary, WBinaryOperation, WConst, WCovertOperation, WExpression, WGetFunctionAddress} from "../wasm";
 
 export function arithmeticDeduce(left: ArithmeticType, right: ArithmeticType): ArithmeticType {
     if (left instanceof FloatingType || right instanceof FloatingType) {
@@ -41,6 +46,9 @@ export function arithmeticDeduce(left: ArithmeticType, right: ArithmeticType): A
 }
 
 export function doTypeTransfrom(type: Type): Type {
+    if (type instanceof ConstType) {
+        type = type.elementType;
+    }
     // array to pointer transform
     if (type instanceof ArrayType) {
         type = new PointerType(type.elementType);
@@ -53,6 +61,46 @@ export function doTypeTransfrom(type: Type): Type {
     // TODO::
 
     return type;
+}
+
+export function unwrapConstType(type: Type): Type {
+    return type instanceof ConstType ? type.elementType : type;
+}
+
+function getClassTypeForConversion(type: Type): ClassType | null {
+    if (type instanceof ClassType) {
+        return type;
+    }
+    if (type instanceof LeftReferenceType && type.elementType instanceof ClassType) {
+        return type.elementType;
+    }
+    if (type instanceof ConstType && type.elementType instanceof ClassType) {
+        return type.elementType;
+    }
+    return null;
+}
+
+function tryUserDefinedConversion(ctx: CompileContext, dstType: Type, src: ExpressionResult,
+                                  node: Node): WExpression | null {
+    const classType = getClassTypeForConversion(src.type);
+    if (!classType) {
+        return null;
+    }
+    const operatorNames = ["#cast:" + unwrapConstType(dstType).toString()];
+    if (unwrapConstType(dstType).equals(PrimitiveTypes.int32)) {
+        operatorNames.push("#cast:bool");
+    }
+    const operatorName = operatorNames.filter((name) => classType.getMember(ctx, name, node) !== null)[0];
+    if (!operatorName) {
+        return null;
+    }
+    const result = new CallExpression(node.location,
+        new MemberExpression(node.location,
+            new AnonymousExpression(node.location, src),
+            false,
+            Identifier.fromString(node.location, operatorName)),
+        []).codegen(ctx);
+    return doConversion(ctx, dstType, result, node);
 }
 
 export function doReferenceTransform(ctx: CompileContext, left: ExpressionResult,
@@ -115,6 +163,7 @@ export function doValueTransform(ctx: CompileContext, expr: ExpressionResult,
                 expr.expr = expr.expr.createLoadAddress(ctx);
             } else {
                 expr.expr = expr.expr.createLoad(ctx, expr.type);
+                expr.type = unwrapConstType(expr.type);
             }
         }
     }
@@ -131,10 +180,33 @@ export function doValueTransform(ctx: CompileContext, expr: ExpressionResult,
 }
 
 export function doConversion(ctx: CompileContext, dstType: Type, src: ExpressionResult,
-                             node: Node, force: boolean = false, toReference: boolean = false): WExpression {
+                             node: Node, force: boolean = false, toReference: boolean = false,
+                             castKind: string = force ? "c" : "implicit"): WExpression {
 
     const shouldToReference = toReference && (dstType instanceof LeftReferenceType);
+    const userConversion = !shouldToReference ? tryUserDefinedConversion(ctx, dstType, src, node) : null;
+    if (userConversion !== null) {
+        return userConversion;
+    }
+    if (shouldToReference && dstType instanceof LeftReferenceType
+        && src.type instanceof LeftReferenceType
+        && src.type.elementType instanceof ClassType) {
+        const dstElementType = dstType.elementType;
+        const srcElementType = src.type.elementType;
+        if (dstType.equals(src.type)
+            || (dstElementType instanceof ConstType && dstElementType.elementType.compatWith(srcElementType))) {
+            if (src.expr instanceof WAddressHolder) {
+                if (src.expr.type === AddressType.LOCAL || src.expr.type === AddressType.GLOBAL) {
+                    return src.expr.createLoad(ctx, PrimitiveTypes.uint32);
+                }
+                return src.expr.createLoadAddress(ctx);
+            }
+            return src.expr;
+        }
+    }
     src = doValueTransform(ctx, src, node, shouldToReference);
+    const effectiveDstType = unwrapConstType(dstType);
+    const effectiveSrcType = unwrapConstType(src.type);
 
     // to remove??
     if ( src.type instanceof UnresolvedFunctionOverloadType) {
@@ -150,6 +222,11 @@ export function doConversion(ctx: CompileContext, dstType: Type, src: Expression
         if ( dstType.equals(src.type)) {
             return src.expr;
         }
+        const dstElementType = dstType.elementType;
+        const srcElementType = src.type.elementType;
+        if (dstElementType instanceof ConstType && dstElementType.elementType.compatWith(srcElementType)) {
+            return src.expr;
+        }
     }
 
     if (dstType instanceof ArrayType) {
@@ -157,9 +234,13 @@ export function doConversion(ctx: CompileContext, dstType: Type, src: Expression
     }
 
     // arithmetic conversion
-    if (dstType instanceof ArithmeticType && src.type instanceof ArithmeticType) {
-        const srcWType = src.type.toWType();
-        const dstWType = dstType.toWType();
+    if (effectiveDstType instanceof ArithmeticType && effectiveSrcType instanceof ArithmeticType) {
+        if (effectiveDstType instanceof BoolType) {
+            return new WBinaryOperation(I32Binary.ne, src.expr,
+                new WConst(effectiveSrcType.toWType(), "0", node.location), node.location);
+        }
+        const srcWType = effectiveSrcType.toWType();
+        const dstWType = effectiveDstType.toWType();
         const ope = getTypeConvertOpe(srcWType, dstWType);
         if ( ope !== null ) {
             return new WCovertOperation(srcWType, dstWType, src.expr, ope, src.expr.location);
@@ -170,9 +251,9 @@ export function doConversion(ctx: CompileContext, dstType: Type, src: Expression
 
     // pointer conversion
 
-    if (dstType instanceof PointerType && src.type instanceof PointerType) {
-        const dstElem = dstType.elementType;
-        const srcElem = src.type.elementType;
+    if (effectiveDstType instanceof PointerType && effectiveSrcType instanceof PointerType) {
+        const dstElem = unwrapConstType(effectiveDstType.elementType);
+        const srcElem = unwrapConstType(effectiveSrcType.elementType);
         if ( dstElem.equals(PrimitiveTypes.void) || srcElem.equals(dstElem)) {
             return src.expr;
         }
@@ -181,27 +262,47 @@ export function doConversion(ctx: CompileContext, dstType: Type, src: Expression
             if ( srcElem.isSubClassOf(dstElem) ) {
                 return src.expr;
             }
+            if (castKind === "dynamic") {
+                throw new SyntaxError(`dynamic_cast requires unsupported runtime type information`, node);
+            }
         }
     }
 
     // 0 to pointer
 
-    if (dstType instanceof PointerType && src.type instanceof IntegerType) {
+    if (effectiveDstType instanceof PointerType && effectiveSrcType instanceof IntegerType) {
         src.expr = src.expr.fold();
         if ( src.expr instanceof WConst && parseInt(src.expr.constant) === 0) {
             return src.expr;
         }
     }
 
-    if (force) {
+    // pointer contextual truthiness
+    if (effectiveDstType.equals(PrimitiveTypes.int32) && effectiveSrcType instanceof PointerType) {
+        return src.expr;
+    }
+
+    if (castKind === "dynamic") {
+        throw new SyntaxError(`unsupported dynamic_cast from ${src.type} to ${dstType}`, node);
+    }
+
+    if (castKind === "reinterpret") {
+        if ((effectiveDstType instanceof PointerType || effectiveDstType instanceof IntegerType)
+            && (effectiveSrcType instanceof PointerType || effectiveSrcType instanceof IntegerType)) {
+            ctx.raiseWarning(`reinterpret_cast from ${src.type} to ${dstType}`, node);
+            return src.expr;
+        }
+    }
+
+    if (force || castKind === "static") {
         // [Force] Integer to Pointer
-        if ((dstType instanceof PointerType || dstType instanceof IntegerType)
-            && (src.type instanceof PointerType || src.type instanceof IntegerType)) {
+        if ((effectiveDstType instanceof PointerType || effectiveDstType instanceof IntegerType)
+            && (effectiveSrcType instanceof PointerType || effectiveSrcType instanceof IntegerType)) {
             return src.expr;
         }
 
         // any pointer to any pointer
-        if (dstType instanceof PointerType && src.type instanceof PointerType) {
+        if (effectiveDstType instanceof PointerType && effectiveSrcType instanceof PointerType) {
             return src.expr;
         }
     }

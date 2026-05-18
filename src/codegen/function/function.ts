@@ -159,6 +159,11 @@ export function defineFunction(ctx: CompileContext, config: FunctionConfig,
 
     const bodyStatements = ctx.getStatementContainer();
 
+    if (functionEntity.fullName === "::main@"
+        && !functionEntity.type.returnType.equals(PrimitiveTypes.void)) {
+        new ReturnStatement(node.location, IntegerConstant.ZeroConstant).codegen(ctx);
+    }
+
     if (!functionEntity.type.returnType.equals(PrimitiveTypes.void)) {
         let curBlk: WStatement[] = bodyStatements;
         while (curBlk.length > 0

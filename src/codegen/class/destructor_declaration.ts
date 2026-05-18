@@ -67,7 +67,10 @@ export class DestructorDeclaration extends ClassDirective {
     }
 
     public codegen(ctx: CompileContext) {
-        const classType = ctx.scopeManager.lookup(this.name.getLookupName(ctx));
+        let classType = ctx.scopeManager.lookup(this.name.getLookupName(ctx));
+        if (!classType && ctx.scopeManager.currentContext.scope.classType) {
+            classType = ctx.scopeManager.currentContext.scope.classType;
+        }
         if (!classType) {
             throw new SyntaxError(`unresolved name ${this.name.getLookupName(ctx)}`, this);
         }

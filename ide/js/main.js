@@ -9,7 +9,7 @@ import {getText, loadAllUIText} from "./ui_text";
 
 window.setting = {
     "auto_save_interval": 30,
-    "language": 1,
+    "language": 0,
     "cpp": 1,
     "expert": 0,
 };
@@ -87,8 +87,19 @@ function showError(error){
     messageTA.scrollTop = 1000000;
 }
 
+let outputBuffer = "";
+function resetOutputBuffer() {
+    outputBuffer = "";
+}
 function showOutput(message){
-    outputTA.value += message;
+    outputBuffer += message;
+}
+function flushOutput(){
+    if (outputBuffer.length === 0) {
+        return;
+    }
+    outputTA.value += outputBuffer;
+    outputBuffer = "";
 }
 function reportError(errorJson){
     fetch('http://er.zhangcy.cn/report', {
@@ -110,6 +121,26 @@ function reportError(errorJson){
 async function downloadCompiler(){
     showMessage("compiler", getText("download_message"));
     return await import("../../src/tools/compiler");
+}
+
+let compiler = null;
+let compilerLoadPromise = null;
+async function prepareCompiler(){
+    if(compiler){
+        return compiler;
+    }
+    if(!compilerLoadPromise){
+        compilerLoadPromise = downloadCompiler()
+            .then((downloadedCompiler) => {
+                compiler = downloadedCompiler;
+                return downloadedCompiler;
+            })
+            .catch((e) => {
+                compilerLoadPromise = null;
+                throw e;
+            });
+    }
+    return await compilerLoadPromise;
 }
 
 function processError(e, CompilerError){
@@ -136,20 +167,17 @@ function processError(e, CompilerError){
         throw e;
     }
 }
-let compiler = null;
 let singleRuntime = null;
 let markerId = null;
 let isLock = false;
 async function runSingleStep(){
     if(isLock) return;
     isLock = true;
-    if(!compiler){
-        compiler = await downloadCompiler();
-    }
     const {JSRuntime, importObj, StringInputFile, compileFile,
-        CompilerError, CallbackOutputFile} = compiler;
+        CompilerError, CallbackOutputFile} = await prepareCompiler();
     if(!singleRuntime){
         outputTA.value = "";
+        resetOutputBuffer();
         showMessage("compiler", "cc -o main main.cpp");
         try {
             const obj = compileFile("main.cpp", editor.getValue(), window.setting.cpp);
@@ -179,12 +207,14 @@ async function runSingleStep(){
             markerId = editor.getSession().addMarker(new Range(line, 0, line, 3000), "current-line", "fullLine", true);
             updateInspector(singleRuntime);
         }catch(e){
+            flushOutput();
             isLock = false;
             console.log(CompilerError);
             processError(e, CompilerError);
         }
     } else {
         const ret = singleRuntime.runSingleStepMode();
+        flushOutput();
         if (ret) {
             const line = singleRuntime.getCurrentLine();
             if(markerId){
@@ -209,12 +239,10 @@ async function runSingleStep(){
 async function run() {
     if(isLock) return;
     isLock = true;
-    if(!compiler){
-        compiler = await downloadCompiler();
-    }
     const {NativeRuntime, importObj, StringInputFile, compileFile,
-        CompilerError, CallbackOutputFile} = compiler;
+        CompilerError, CallbackOutputFile} = await prepareCompiler();
     outputTA.value = "";
+    resetOutputBuffer();
     showMessage("compiler", "cc -o main main.cpp");
     try {
         const obj = compileFile("main.cpp", editor.getValue(), window.setting.cpp);
@@ -238,9 +266,11 @@ async function run() {
         selectDiv("output");
         // todo::
         await runtime.run();
+        flushOutput();
         showMessage("runtime", getText("end_message"));
         selectDiv("output");
     }catch(e){
+        flushOutput();
         isLock = false;
         processError(e, CompilerError);
     }
@@ -251,10 +281,7 @@ async function run() {
 async function getDebugInfo() {
     if(isLock) return;
     isLock = true;
-    if(!compiler){
-        compiler = await downloadCompiler();
-    }
-    const {getDebugSymbols, CompilerError} = compiler;
+    const {getDebugSymbols, CompilerError} = await prepareCompiler();
     outputTA.value = "";
     showMessage("compiler", "cc -o main main.cpp");
     try {
@@ -284,6 +311,11 @@ if( window.localStorage.getItem("code")){
 
 window.addEventListener('load', function(){
     loadAllUIText();
+    setTimeout(() => {
+        prepareCompiler().catch((e) => {
+            showMessage("error", e.toString());
+        });
+    }, 0);
 });
 
 

@@ -14,14 +14,20 @@ export class NameSpaceBlock extends Directive {
     }
 
     public codegen(ctx: CompileContext): void {
-        // TODO::
-        const newScope = new Scope(this.namespace.getPlainName(ctx),
-            ctx.scopeManager.currentContext.scope, ctx.isCpp());
-        ctx.scopeManager.currentContext.scope.children.push(newScope);
+        const namespaceName = this.namespace.getPlainName(ctx);
+        const parentScope = ctx.scopeManager.currentContext.scope;
+        let newScope = parentScope.children
+            .filter((scope) => scope.shortName === namespaceName && !scope.isInnerScope)[0];
+        if (!newScope) {
+            newScope = new Scope(namespaceName, parentScope, ctx.isCpp());
+            parentScope.children.push(newScope);
+        }
         ctx.scopeManager.contextStack.push(ctx.scopeManager.currentContext);
+        const activeScopes = ctx.scopeManager.currentContext.activeScopes
+            .filter((scope) => scope.fullName !== newScope.fullName);
         ctx.scopeManager.currentContext = {
             scope: newScope,
-            activeScopes: [...ctx.scopeManager.currentContext.activeScopes, newScope],
+            activeScopes: [...activeScopes, newScope],
         };
         this.statements.map((x) => x.codegen(ctx));
         ctx.exitScope(this);

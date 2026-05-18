@@ -1,0 +1,122 @@
+#ifndef _CPP_SET
+#define _CPP_SET
+
+__libcall void __container_error(char *message);
+
+namespace std {
+
+template<typename SetT>
+class set {
+    SetT *data_;
+    int size_;
+    int capacity_;
+
+    void grow() {
+        int new_capacity = capacity_ * 2;
+        SetT *new_data = new SetT[new_capacity];
+        for (int i = 0; i < size_; i++) {
+            new_data[i] = data_[i];
+        }
+        delete[] data_;
+        data_ = new_data;
+        capacity_ = new_capacity;
+    }
+
+    int lower_bound_index(SetT value) {
+        int index = 0;
+        while (index < size_ && data_[index] < value) {
+            index = index + 1;
+        }
+        return index;
+    }
+
+public:
+    set() {
+        size_ = 0;
+        capacity_ = 4;
+        data_ = new SetT[capacity_];
+    }
+
+    bool empty() {
+        return size_ == 0;
+    }
+
+    int size() {
+        return size_;
+    }
+
+    SetT *begin() {
+        return data_;
+    }
+
+    SetT *end() {
+        return data_ + size_;
+    }
+
+    void clear() {
+        size_ = 0;
+    }
+
+    void insert(SetT value) {
+        int index = lower_bound_index(value);
+        if (index < size_ && data_[index] == value) {
+            return;
+        }
+        if (size_ == capacity_) {
+            grow();
+        }
+        for (int i = size_; i > index; i--) {
+            data_[i] = data_[i - 1];
+        }
+        data_[index] = value;
+        size_ = size_ + 1;
+    }
+
+    void push_back(SetT value) {
+        insert(value);
+    }
+
+    SetT *find(SetT value) {
+        int index = lower_bound_index(value);
+        if (index < size_ && data_[index] == value) {
+            return data_ + index;
+        }
+        return end();
+    }
+
+    int count(SetT value) {
+        int index = lower_bound_index(value);
+        if (index < size_ && data_[index] == value) {
+            return 1;
+        } else {
+            return 0;
+        }
+    }
+
+    void erase(SetT value) {
+        int index = lower_bound_index(value);
+        if (index >= size_ || !(data_[index] == value)) {
+            return;
+        }
+        for (int i = index; i < size_ - 1; i++) {
+            data_[i] = data_[i + 1];
+        }
+        size_ = size_ - 1;
+    }
+
+    SetT *erase(SetT *position) {
+        int index = position - data_;
+        if (index < 0 || index >= size_) {
+            __container_error("set::erase iterator out of range");
+        }
+        for (int i = index; i < size_ - 1; i++) {
+            data_[i] = data_[i + 1];
+        }
+        size_ = size_ - 1;
+        return data_ + index;
+    }
+};
+
+}
+
+#endif
