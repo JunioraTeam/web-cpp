@@ -1,6 +1,6 @@
 {
-  "name": "web-cpp",
-  "version": "0.7.0",
+  "name": "@junioradevteam/web-cpp",
+  "version": "0.8.0",
   "description": "a c++ compiler in typescript",
   "main": "index.js",
   "scripts": {
@@ -12,14 +12,14 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+ssh://git@github.com/zurl/web-cpp.git"
+    "url": "git+ssh://git@github.com/JunioraTeam/web-cpp.git"
   },
   "author": "Chengyi Zhang",
   "license": "Apache-2.0",
   "bugs": {
-    "url": "https://github.com/zurl/web-cpp/issues"
+    "url": "https://github.com/JunioraTeam/web-cpp/issues"
   },
-  "homepage": "https://github.com/zurl/web-cpp#readme",
+  "homepage": "https://github.com/JunioraTeam/web-cpp#readme",
   "devDependencies": {
     "@types/bn.js": "^4.11.1",
     "@types/long": "^4.0.0",
