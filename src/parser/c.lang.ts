@@ -237,6 +237,205 @@ Enumerator
     }
 
 
+Constant
+    = FloatingConstant
+    / IntegerConstant
+    / CharacterConstant
+
+IntegerConstant
+    // REORDER: HexadecimalConstant / OctalConstant
+    = integer:(constant:(DecimalConstant / HexadecimalConstant / OctalConstant) {
+        return {
+            base: constant.base,
+            value: constant.value,
+            raw: text()
+        }
+        }) suffix:$IntegerSuffix? {
+        if (suffix.toLowerCase().includes('u')) {
+            integer.value.unsigned = true;
+        }
+        return new AST.IntegerConstant(getLocation(), integer.base, integer.value, integer.raw, suffix || null);
+    }
+
+DecimalConstant
+    = NonzeroDigit Digit* {
+        // SAFE_NUMBER: Using Long.
+        return {
+            base: 10,
+            value: Long.fromString(text())
+        };
+    }
+
+OctalConstant
+    = '0' digits:$OctalDigit* {
+        // SAFE_NUMBER: Using Long.
+        return {
+            base: 8,
+            value: digits.length ? Long.fromString(digits, 8) : Long.ZERO
+        };
+    }
+
+HexadecimalConstant
+    = HexadecimalPrefix digits:$HexadecimalDigit+ {
+        // SAFE_NUMBER: Using Long.
+        return {
+            base: 16,
+            value: Long.fromString(digits, 16)
+        };
+    }
+
+FloatingConstant
+    = DecimalFloatingConstant
+
+DecimalFloatingConstant
+    = raw:$((FractionalConstant ExponentPart?) / (DigitSequence ExponentPart)) suffix:$FloatingSuffix? {
+        return new AST.FloatingConstant(getLocation(), Number.parseFloat(raw), raw, suffix || null);
+    }
+
+HexadecimalFractionalConstant
+    = HexadecimalDigitSequence '.' HexadecimalDigitSequence?
+    / '.' HexadecimalDigitSequence
+
+CharacterConstant
+    = prefix:$[LuU]? '\\'' value:CCharSequence '\\'' {
+        return new AST.CharacterConstant(getLocation(), value, prefix || null);
+    }
+
+EncodingPrefix
+    = 'u8'
+    / 'u'
+    / 'U'
+    / 'L'
+
+UniversalCharacterName
+    = '\\\\u' hexQuad:$HexQuad {
+        return parseUniversalCharacter(hexQuad);
+    }
+    / '\\\\U' hexQuads:$(HexQuad HexQuad) {
+        return parseUniversalCharacter(hexQuads);
+    }
+
+HexQuad
+    = HexadecimalDigit HexadecimalDigit HexadecimalDigit HexadecimalDigit
+
+StringLiteral
+    = head:SingleStringLiteral tail:(_ SingleStringLiteral)* {
+        return buildList(head, tail, 1).reduce((left, right) => {
+            let prefix = null;
+            if (left.prefix !== right.prefix) {
+                if (left.prefix) {
+                    if (right.prefix) {
+                        error('Unsupported non-standard concatenation of string literals');
+                    } else {
+                        prefix = left.prefix;
+                    }
+                } else {
+                    prefix = right.prefix;
+                }
+            } else {
+                prefix = left.prefix;
+            }
+            const value = left.value.slice(0, -1) + right.value;
+            return new AST.StringLiteral(getLocation(), prefix, value);
+        });
+    }
+
+SingleStringLiteral
+    = prefix:$EncodingPrefix? '"' value:SCharSequence? &!'"' {
+        return new AST.StringLiteral(getLocation(), prefix || null, (value || '') + '\\0');
+    }
+
+SCharSequence
+    = chars:SChar+ {
+        return chars.join('');
+    }
+
+SChar
+    = [^"\\\\\\n] // any member of the source character set except the double-quote ", backslash \\, or new-line character
+    / EscapeSequence
+
+UnaryOperator
+    = [*+\\-~!]
+    / SingleAnd
+
+CCharSequence
+    = chars:CChar+ {
+        return chars.join('');
+    }
+
+CChar
+    = [^'\\\\\\n] // any member of the source character set except the single-quote ', backslash \\, or new-line character
+    / EscapeSequence
+
+EscapeSequence
+    = SimpleEscapeSequence
+    / OctalEscapeSequence
+    / HexadecimalEscapeSequence
+    / UniversalCharacterName
+
+SimpleEscapeSequence
+    = ('\\\\\\''
+    / '\\\\"'
+    / '\\\\?'
+    / '\\\\\\\\') {
+        return text().charAt(1);
+    }
+    / '\\\\a' {
+        return '\\x07';
+    }
+    / '\\\\b' {
+        return '\\b';
+    }
+    / '\\\\f' {
+        return '\\f';
+    }
+    / '\\\\n' {
+        return '\\n';
+    }
+    / '\\\\r' {
+        return '\\r';
+    }
+    / '\\\\t' {
+        return '\\t';
+    }
+    / '\\\\v' {
+        return '\\v';
+    }
+
+OctalEscapeSequence
+    = '\\\\' digits:$(OctalDigit OctalDigit? OctalDigit?) {
+        // SAFE_NUMBER: At most 0777.
+        return String.fromCharCode(Number.parseInt(digits, 8));
+    }
+
+HexadecimalEscapeSequence
+    = '\\\\x' digits:$HexadecimalDigit+ {
+        // TODO: Guard against very long digits.
+        return String.fromCharCode(Number.parseInt(digits, 16));
+    }
+
+BinaryExponentPart
+    = [pP] Sign? DigitSequence
+
+HexadecimalDigitSequence
+    = HexadecimalDigit+
+
+FloatingSuffix
+    = [flFL]
+
+FractionalConstant
+    = DigitSequence '.' DigitSequence?
+    / '.' DigitSequence
+
+ExponentPart
+    = [eE] Sign? DigitSequence
+
+Sign
+    = [+\\-]
+
+DigitSequence
+    = Digit+
+
 TranslationUnit
     = list:DeclarationList{
         return new AST.TranslationUnit(getLocation(), list);
@@ -744,205 +943,130 @@ DeleteExpression
     / 'delete[]' _ expr:AssignmentExpression {
         return new AST.DeleteExpression(getLocation(), expr, true);
     }
-Constant
-    = FloatingConstant
-    / IntegerConstant
-    / CharacterConstant
+Statement
+    = CaseStatement
+    / SelectionStatement
+    / IterationStatement
+    / JumpStatement
+    / CompoundStatement
+    / LabeledStatement
+    / ExpressionStatement
+    / UsingStatements
 
-IntegerConstant
-    // REORDER: HexadecimalConstant / OctalConstant
-    = integer:(constant:(DecimalConstant / HexadecimalConstant / OctalConstant) {
-        return {
-            base: constant.base,
-            value: constant.value,
-            raw: text()
-        }
-        }) suffix:$IntegerSuffix? {
-        if (suffix.toLowerCase().includes('u')) {
-            integer.value.unsigned = true;
-        }
-        return new AST.IntegerConstant(getLocation(), integer.base, integer.value, integer.raw, suffix || null);
+// ADDED
+CaseStatement
+    = 'case' !IdentifierPart _ test:ConstantExpression _ &!':' _ body:Statement {
+        return new AST.CaseStatement(getLocation(), test, body);
+    }
+    / 'default' !IdentifierPart _ &!':' _ body:Statement {
+        return new AST.CaseStatement(getLocation(), null, body)
     }
 
-DecimalConstant
-    = NonzeroDigit Digit* {
-        // SAFE_NUMBER: Using Long.
-        return {
-            base: 10,
-            value: Long.fromString(text())
-        };
+// MODIFICATION: No case or default.
+LabeledStatement
+    = label:Identifier _ ':' _ body:Statement {
+        return new AST.LabeledStatement(getLocation(), label, body);
     }
 
-OctalConstant
-    = '0' digits:$OctalDigit* {
-        // SAFE_NUMBER: Using Long.
-        return {
-            base: 8,
-            value: digits.length ? Long.fromString(digits, 8) : Long.ZERO
-        };
+ScopeStart
+    = '{' {
+        enterScope();
+        return getLocation();
     }
 
-HexadecimalConstant
-    = HexadecimalPrefix digits:$HexadecimalDigit+ {
-        // SAFE_NUMBER: Using Long.
-        return {
-            base: 16,
-            value: Long.fromString(digits, 16)
-        };
+ScopeEnd
+    = &!'}' {
+        exitScope();
+        return getLocation();
     }
 
-FloatingConstant
-    = DecimalFloatingConstant
-
-DecimalFloatingConstant
-    = raw:$((FractionalConstant ExponentPart?) / (DigitSequence ExponentPart)) suffix:$FloatingSuffix? {
-        return new AST.FloatingConstant(getLocation(), Number.parseFloat(raw), raw, suffix || null);
+CompoundStatement
+    = left:ScopeStart _ body:BlockItemList? _ right:ScopeEnd {
+        return new AST.CompoundStatement(getLocation(), body || []);
     }
 
-HexadecimalFractionalConstant
-    = HexadecimalDigitSequence '.' HexadecimalDigitSequence?
-    / '.' HexadecimalDigitSequence
-
-CharacterConstant
-    = prefix:$[LuU]? '\\'' value:CCharSequence '\\'' {
-        return new AST.CharacterConstant(getLocation(), value, prefix || null);
+BlockItemList
+    = head:BlockItem tail:(_ BlockItem)* {
+        return buildList(head, tail, 1);
     }
 
-EncodingPrefix
-    = 'u8'
-    / 'u'
-    / 'U'
-    / 'L'
-
-UniversalCharacterName
-    = '\\\\u' hexQuad:$HexQuad {
-        return parseUniversalCharacter(hexQuad);
+BlockItem
+    = Statement
+    / Declaration
+    / Expression { // ExpressionStatementMissingSemicolon
+        error('Missing \\';\\' at end of statement');
     }
-    / '\\\\U' hexQuads:$(HexQuad HexQuad) {
-        return parseUniversalCharacter(hexQuads);
+    / DeclarationMissingSemicolon
+
+ExpressionStatement
+    = expression:(Expression _)? ';' {
+        return expression ? new AST.ExpressionStatement(getLocation(), extractOptional(expression, 0))
+                : new AST.NullStatement(getLocation());
     }
-
-HexQuad
-    = HexadecimalDigit HexadecimalDigit HexadecimalDigit HexadecimalDigit
-
-StringLiteral
-    = head:SingleStringLiteral tail:(_ SingleStringLiteral)* {
-        return buildList(head, tail, 1).reduce((left, right) => {
-            let prefix = null;
-            if (left.prefix !== right.prefix) {
-                if (left.prefix) {
-                    if (right.prefix) {
-                        error('Unsupported non-standard concatenation of string literals');
-                    } else {
-                        prefix = left.prefix;
-                    }
-                } else {
-                    prefix = right.prefix;
-                }
-            } else {
-                prefix = left.prefix;
-            }
-            const value = left.value.slice(0, -1) + right.value;
-            return new AST.StringLiteral(getLocation(), prefix, value);
-        });
+    / Expression _ BinaryOperator _ token:$[;)] {
+        error("expected primary-expression before '" + token + "' token", getEndTokenLocation(token));
     }
 
-SingleStringLiteral
-    = prefix:$EncodingPrefix? '"' value:SCharSequence? &!'"' {
-        return new AST.StringLiteral(getLocation(), prefix || null, (value || '') + '\\0');
+SelectionStatement
+    = 'if' !IdentifierPart _ &!'(' _ test:Expression _ &!')' _ consequent:Statement alternate:(_ 'else' !IdentifierPart _ Statement)? {
+        return new AST.IfStatement(getLocation(), test, consequent, extractOptional(alternate, 4));
+    }
+    / 'switch' !IdentifierPart _ &!'(' _ discriminant:Expression _ &!')' _ body:Statement {
+        return new AST.SwitchStatement(getLocation(), discriminant, body);
     }
 
-SCharSequence
-    = chars:SChar+ {
-        return chars.join('');
+IterationStatement
+    = 'while' !IdentifierPart _ &!'(' _ test:Expression _ &!')' _ body:Statement {
+        return new AST.WhileStatement(getLocation(), test, body);
+    }
+    / 'do' !IdentifierPart _ body:Statement _ 'while' !IdentifierPart _ &!'(' _ test:Expression _ &!')' _ &!';' {
+        return new AST.DoWhileStatement(getLocation(), body, test);
+    }
+    / 'for' !IdentifierPart _ &!'(' _ decl:RangeForDeclaration _ ':' _ range:Expression _ &!')' _ body:Statement {
+        return new AST.RangeForStatement(getLocation(), decl, range, body);
+    }
+    / 'for' !IdentifierPart _ &!'(' _ init:(Declaration / expression:Expression? _ ';' {
+        return expression;
+    } / (DeclarationWithoutSemicolon / Expression) {
+        error('Missing \\';\\'');
+    }) _ test:Expression? _ &!';' _ update:Expression? _ &!')' _ body:Statement {
+        return new AST.ForStatement(getLocation(), init, test, update, body);
     }
 
-SChar
-    = [^"\\\\\\n] // any member of the source character set except the double-quote ", backslash \\, or new-line character
-    / EscapeSequence
-
-UnaryOperator
-    = [*+\\-~!]
-    / SingleAnd
-
-CCharSequence
-    = chars:CChar+ {
-        return chars.join('');
+RangeForDeclaration
+    = specifiers:DeclarationSpecifiers _ declarator:Declarator {
+        return new AST.Declaration(getLocation(), specifiers, [
+            new AST.InitDeclarator(getLocation(), declarator, null)
+        ]);
     }
 
-CChar
-    = [^'\\\\\\n] // any member of the source character set except the single-quote ', backslash \\, or new-line character
-    / EscapeSequence
-
-EscapeSequence
-    = SimpleEscapeSequence
-    / OctalEscapeSequence
-    / HexadecimalEscapeSequence
-    / UniversalCharacterName
-
-SimpleEscapeSequence
-    = ('\\\\\\''
-    / '\\\\"'
-    / '\\\\?'
-    / '\\\\\\\\') {
-        return text().charAt(1);
+JumpStatement
+    = 'goto' !IdentifierPart _ label:Identifier _ &!';' {
+        return new AST.GotoStatement(getLocation(), label);
     }
-    / '\\\\a' {
-        return '\\x07';
+    / 'continue' !IdentifierPart _ &!';' {
+        return new AST.ContinueStatement(getLocation());
     }
-    / '\\\\b' {
-        return '\\b';
+    / 'break' !IdentifierPart _ &!';' {
+        return new AST.BreakStatement(getLocation());
     }
-    / '\\\\f' {
-        return '\\f';
-    }
-    / '\\\\n' {
-        return '\\n';
-    }
-    / '\\\\r' {
-        return '\\r';
-    }
-    / '\\\\t' {
-        return '\\t';
-    }
-    / '\\\\v' {
-        return '\\v';
+    / 'return' !IdentifierPart _ argument:Expression? _ &!';' {
+        return new AST.ReturnStatement(getLocation(), argument);
     }
 
-OctalEscapeSequence
-    = '\\\\' digits:$(OctalDigit OctalDigit? OctalDigit?) {
-        // SAFE_NUMBER: At most 0777.
-        return String.fromCharCode(Number.parseInt(digits, 8));
+
+UsingStatements
+    = 'using' _ name:Identifier _ '=' _ decl:TypeName _ ';'{
+        currScope.names.set(name.getLastID().name, TYPE_NAME);
+        globalMap.set(name.getLastID().name, TYPE_NAME);
+        return new AST.UsingStatement(getLocation(), name, decl);
     }
-
-HexadecimalEscapeSequence
-    = '\\\\x' digits:$HexadecimalDigit+ {
-        // TODO: Guard against very long digits.
-        return String.fromCharCode(Number.parseInt(digits, 16));
+    / 'using' _ name:(Identifier/TypeIdentifier/TemplateClassIdentifier/TemplateFuncIdentifier) _ ';'{
+        return new AST.UsingStatement(getLocation(), name);
     }
-
-BinaryExponentPart
-    = [pP] Sign? DigitSequence
-
-HexadecimalDigitSequence
-    = HexadecimalDigit+
-
-FloatingSuffix
-    = [flFL]
-
-FractionalConstant
-    = DigitSequence '.' DigitSequence?
-    / '.' DigitSequence
-
-ExponentPart
-    = [eE] Sign? DigitSequence
-
-Sign
-    = [+\\-]
-
-DigitSequence
-    = Digit+
-
+    / 'using' _ 'namespace' _ name:TypeIdentifier _ ';'{
+        return new AST.UsingNamespaceStatement(getLocation(), name);
+    }
 Id
     = !Keyword head:IdentifierNondigit tail:IdentifierPart* {
         return new AST.SingleIdentifier(getLocation(), head + tail.join(''), AST.IDType.ID, []);
@@ -1176,130 +1300,6 @@ Nondigit
 Digit
     = [0-9]
 
-Statement
-    = CaseStatement
-    / SelectionStatement
-    / IterationStatement
-    / JumpStatement
-    / CompoundStatement
-    / LabeledStatement
-    / ExpressionStatement
-    / UsingStatements
-
-// ADDED
-CaseStatement
-    = 'case' !IdentifierPart _ test:ConstantExpression _ &!':' _ body:Statement {
-        return new AST.CaseStatement(getLocation(), test, body);
-    }
-    / 'default' !IdentifierPart _ &!':' _ body:Statement {
-        return new AST.CaseStatement(getLocation(), null, body)
-    }
-
-// MODIFICATION: No case or default.
-LabeledStatement
-    = label:Identifier _ ':' _ body:Statement {
-        return new AST.LabeledStatement(getLocation(), label, body);
-    }
-
-ScopeStart
-    = '{' {
-        enterScope();
-        return getLocation();
-    }
-
-ScopeEnd
-    = &!'}' {
-        exitScope();
-        return getLocation();
-    }
-
-CompoundStatement
-    = left:ScopeStart _ body:BlockItemList? _ right:ScopeEnd {
-        return new AST.CompoundStatement(getLocation(), body || []);
-    }
-
-BlockItemList
-    = head:BlockItem tail:(_ BlockItem)* {
-        return buildList(head, tail, 1);
-    }
-
-BlockItem
-    = Statement
-    / Declaration
-    / Expression { // ExpressionStatementMissingSemicolon
-        error('Missing \\';\\' at end of statement');
-    }
-    / DeclarationMissingSemicolon
-
-ExpressionStatement
-    = expression:(Expression _)? ';' {
-        return expression ? new AST.ExpressionStatement(getLocation(), extractOptional(expression, 0))
-                : new AST.NullStatement(getLocation());
-    }
-    / Expression _ BinaryOperator _ token:$[;)] {
-        error("expected primary-expression before '" + token + "' token", getEndTokenLocation(token));
-    }
-
-SelectionStatement
-    = 'if' !IdentifierPart _ &!'(' _ test:Expression _ &!')' _ consequent:Statement alternate:(_ 'else' !IdentifierPart _ Statement)? {
-        return new AST.IfStatement(getLocation(), test, consequent, extractOptional(alternate, 4));
-    }
-    / 'switch' !IdentifierPart _ &!'(' _ discriminant:Expression _ &!')' _ body:Statement {
-        return new AST.SwitchStatement(getLocation(), discriminant, body);
-    }
-
-IterationStatement
-    = 'while' !IdentifierPart _ &!'(' _ test:Expression _ &!')' _ body:Statement {
-        return new AST.WhileStatement(getLocation(), test, body);
-    }
-    / 'do' !IdentifierPart _ body:Statement _ 'while' !IdentifierPart _ &!'(' _ test:Expression _ &!')' _ &!';' {
-        return new AST.DoWhileStatement(getLocation(), body, test);
-    }
-    / 'for' !IdentifierPart _ &!'(' _ decl:RangeForDeclaration _ ':' _ range:Expression _ &!')' _ body:Statement {
-        return new AST.RangeForStatement(getLocation(), decl, range, body);
-    }
-    / 'for' !IdentifierPart _ &!'(' _ init:(Declaration / expression:Expression? _ ';' {
-        return expression;
-    } / (DeclarationWithoutSemicolon / Expression) {
-        error('Missing \\';\\'');
-    }) _ test:Expression? _ &!';' _ update:Expression? _ &!')' _ body:Statement {
-        return new AST.ForStatement(getLocation(), init, test, update, body);
-    }
-
-RangeForDeclaration
-    = specifiers:DeclarationSpecifiers _ declarator:Declarator {
-        return new AST.Declaration(getLocation(), specifiers, [
-            new AST.InitDeclarator(getLocation(), declarator, null)
-        ]);
-    }
-
-JumpStatement
-    = 'goto' !IdentifierPart _ label:Identifier _ &!';' {
-        return new AST.GotoStatement(getLocation(), label);
-    }
-    / 'continue' !IdentifierPart _ &!';' {
-        return new AST.ContinueStatement(getLocation());
-    }
-    / 'break' !IdentifierPart _ &!';' {
-        return new AST.BreakStatement(getLocation());
-    }
-    / 'return' !IdentifierPart _ argument:Expression? _ &!';' {
-        return new AST.ReturnStatement(getLocation(), argument);
-    }
-
-
-UsingStatements
-    = 'using' _ name:Identifier _ '=' _ decl:TypeName _ ';'{
-        currScope.names.set(name.getLastID().name, TYPE_NAME);
-        globalMap.set(name.getLastID().name, TYPE_NAME);
-        return new AST.UsingStatement(getLocation(), name, decl);
-    }
-    / 'using' _ name:(Identifier/TypeIdentifier/TemplateClassIdentifier/TemplateFuncIdentifier) _ ';'{
-        return new AST.UsingStatement(getLocation(), name);
-    }
-    / 'using' _ 'namespace' _ name:TypeIdentifier _ ';'{
-        return new AST.UsingNamespaceStatement(getLocation(), name);
-    }
 TemplateDeclaration
     = 'template' _ '<' _ &{
         enterScope();

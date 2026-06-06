@@ -35,6 +35,7 @@ export abstract class Runtime {
     public heapAllocator: HeapAllocator;
     public loopIterations: number;
     public maxLoopIterations: number;
+    public ungetChar: number = -1;
 
     constructor(options: RuntimeOptions) {
         this.memoryBuffer = new ArrayBuffer(options.memorySize);

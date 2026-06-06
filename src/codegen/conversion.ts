@@ -27,7 +27,7 @@ import {ExpressionResult} from "./expression/expression";
 import {Identifier} from "./expression/identifier";
 import {CallExpression} from "./function/call_expression";
 import {doFunctionOverloadResolution} from "./overload";
-import {getTypeConvertOpe, I32Binary, WBinaryOperation, WConst, WCovertOperation, WExpression, WGetFunctionAddress} from "../wasm";
+import {BinaryOperator, getOpFromStr, getTypeConvertOpe, I32Binary, WBinaryOperation, WConst, WCovertOperation, WExpression, WGetFunctionAddress} from "../wasm";
 
 export function arithmeticDeduce(left: ArithmeticType, right: ArithmeticType): ArithmeticType {
     if (left instanceof FloatingType || right instanceof FloatingType) {
@@ -236,8 +236,10 @@ export function doConversion(ctx: CompileContext, dstType: Type, src: Expression
     // arithmetic conversion
     if (effectiveDstType instanceof ArithmeticType && effectiveSrcType instanceof ArithmeticType) {
         if (effectiveDstType instanceof BoolType) {
-            return new WBinaryOperation(I32Binary.ne, src.expr,
-                new WConst(effectiveSrcType.toWType(), "0", node.location), node.location);
+            const srcWType = effectiveSrcType.toWType();
+            const neOpe = getOpFromStr("!=", srcWType) as BinaryOperator;
+            return new WBinaryOperation(neOpe, src.expr,
+                new WConst(srcWType, "0", node.location), node.location);
         }
         const srcWType = effectiveSrcType.toWType();
         const dstWType = effectiveDstType.toWType();

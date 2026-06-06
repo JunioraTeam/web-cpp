@@ -103,6 +103,67 @@ int main()
         });
     });
 
+    it('reads bool with cin extraction', async function() {
+        const testCode = `
+#include <iostream>
+using namespace std;
+
+int main()
+{
+    bool lale;
+    cin >> lale;
+    cout << lale;
+    return 0;
+}
+        `;
+        const cases = [
+            ["0", "0"],
+            ["1", "1"],
+            ["2", "1"],
+            ["-1", "1"],
+            ["-2", "1"],
+            ["a", "0"],
+            ["A", "0"],
+        ];
+        for (const [input, expectOutput] of cases) {
+            await TestBase.testFullCode(testCode, expectOutput, {isCpp: true, input});
+        }
+    });
+
+    it('reads float and int with cin extraction', async function() {
+        const testCode = `
+#include <iostream>
+using namespace std;
+
+int main()
+{
+    int number;
+    float x, y;
+    cin >> x >> number >> y;
+    cout << x << ' ' << number << ' ' << y;
+    return 0;
+}
+        `;
+        await TestBase.testFullCode(testCode, "1.5 2 1.5", {isCpp: true, input: "1.5 2 1.5"});
+        await TestBase.testFullCode(testCode, "1.5 2 0.5", {isCpp: true, input: "1.5 2.5 1.5"});
+    });
+
+    it('reads double with cin extraction', async function() {
+        const testCode = `
+#include <iostream>
+using namespace std;
+
+int main()
+{
+    double a, b;
+    cin >> a >> b;
+    cout << a + b;
+    return 0;
+}
+        `;
+        return await TestBase.testFullCode(testCode, "4", {isCpp: true, input: "1.5 2.5"});
+    });
+
     it('throws when cin reaches EOF before reading an int', async function() {
         const testCode = `
 #include <iostream>

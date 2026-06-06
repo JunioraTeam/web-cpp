@@ -1,6 +1,6 @@
 {
   "name": "@junioradevteam/web-cpp",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "description": "a c++ compiler in typescript",
   "main": "index.js",
   "scripts": {
@@ -39,6 +39,7 @@
     "typescript": "^3.2.1"
   },
   "dependencies": {
+    "@junioradevteam/web-cpp": "^0.8.0",
     "babel-polyfill": "^6.26.0",
     "bn.js": "^4.11.8",
     "file-saver": "^2.0.0",

@@ -142,6 +142,11 @@ const inputBuffer = new ArrayBuffer(10);
 const inputView = new DataView(inputBuffer);
 
 export function getchar(this: Runtime): number {
+    if ( this.ungetChar >= 0 ) {
+        const c = this.ungetChar;
+        this.ungetChar = -1;
+        return c;
+    }
     if ( this.files[0].read(inputBuffer, 0, 1) === 0 ) {
         return -1;
     }
@@ -191,6 +196,9 @@ export function scanf(this: Runtime): number {
                     val = val.mul(10).add(ch - CC_0);
                     ch = getchar.apply(this);
                 }
+                if ( ch !== -1 ) {
+                    this.ungetChar = ch;
+                }
                 const addr = this.memory.getInt32(sp, true);
                 sp += 4;
                 if ( isNeg ) {
@@ -215,7 +223,11 @@ export function scanf(this: Runtime): number {
                 result ++;
             } else if (chr2 === "s") {
                 let addr = this.memory.getInt32(sp, true);
+                sp += 4;
                 let ch = getchar.apply(this);
+                while ( ch === CC_S || ch === CC_NL || ch === CC_TAB) {
+                    ch = getchar.apply(this);
+                }
                 if (ch === -1) {
                     return result === 0 ? -1 : result;
                 }
@@ -224,6 +236,10 @@ export function scanf(this: Runtime): number {
                     this.memory.setUint8(addr++, ch);
                     ch = getchar.apply(this);
                 }
+                if ( ch !== -1 ) {
+                    this.ungetChar = ch;
+                }
+                this.memory.setUint8(addr, 0);
                 result ++;
             } else if (chr2 === "f") {
                 let val = 0;
@@ -253,6 +269,9 @@ export function scanf(this: Runtime): number {
                         }
                     }
                     ch = getchar.apply(this);
+                }
+                if ( ch !== -1 ) {
+                    this.ungetChar = ch;
                 }
                 const addr = this.memory.getInt32(sp, true);
                 sp += 4;

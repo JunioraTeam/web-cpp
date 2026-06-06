@@ -20,6 +20,39 @@ describe('feature integration test', function () {
         const expectOutput = `90\n80\n20`;
         return await TestBase.testFullCode(testCode, expectOutput);
     });
+    it('test global const double initialization', async function () {
+        const testCode = `
+#include <iostream>
+using namespace std;
+const double PI = 3.14159265359;
+int main()
+{
+    cout << "PI Number is : " << PI;
+    return 0;
+}
+        `;
+        const expectOutput = `PI Number is : 3.14159265359`;
+        return await TestBase.testFullCode(testCode, expectOutput, {isCpp: true});
+    });
+    it('test bool cast from arithmetic types', async function () {
+        const testCode = `
+#include <iostream>
+using namespace std;
+
+int main()
+{
+    int a = 0;
+    int b = 2;
+    int c = -1;
+    double d = 2;
+
+    cout << (bool)a << (bool)b << (bool)c << (bool)d;
+    return 0;
+}
+        `;
+        const expectOutput = `0111`;
+        return await TestBase.testFullCode(testCode, expectOutput, {isCpp: true});
+    });
     it('test function pointer', async function () {
         const testCode = `
 #include <stdio.h>

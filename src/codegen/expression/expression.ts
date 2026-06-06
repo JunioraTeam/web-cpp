@@ -2,6 +2,7 @@ import * as Long from "long";
 import {InternalError, SyntaxError} from "../../common/error";
 import {Node, SourceLocation} from "../../common/node";
 import {Type} from "../../type";
+import {ConstType} from "../../type/compound_type";
 import {
     ArithmeticType, CharType, DoubleType,
     FloatType, Int16Type,
@@ -58,6 +59,9 @@ export function doVarInit(ctx: CompileContext, leftType: Type, rightType: Type,
                           leftValue: number, rightValue: string, node: Node) {
     // charptr, int, double
     // arraybuffer is small endian, exchange required
+    while (leftType instanceof ConstType) {
+        leftType = leftType.elementType;
+    }
     if (leftType instanceof UnsignedCharType) {
         ctx.memory.data.setUint8(leftValue, parseInt(rightValue));
     } else if (leftType instanceof CharType) {
