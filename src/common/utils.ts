@@ -66,21 +66,36 @@ export function toHexString(value: number) {
     return "0x" + result;
 }
 
+const utf8Encoder = new TextEncoder();
+const utf8Decoder = new TextDecoder("utf-8");
+
+export function toUtf8Bytes(value: string): Uint8Array {
+    return utf8Encoder.encode(value);
+}
+
 export function fromBytesToString(data: DataView, start: number, size?: number) {
-    let result = "";
+    let end = start;
     if ( size === undefined) {
-        let i = start, code = data.getUint8(i);
-        while ( code !== 0) {
-            result += String.fromCharCode(code);
-            i ++;
-            code = data.getUint8(i);
+        while ( data.getUint8(end) !== 0) {
+            end ++;
         }
     } else {
-        for (let i = start; i < start + size; i++) {
-            result += String.fromCharCode(data.getUint8(i));
-        }
+        end = start + size;
     }
-    return result;
+    return utf8Decoder.decode(new Uint8Array(data.buffer, data.byteOffset + start, end - start));
+}
+
+/**
+ * Decodes a sequence of byte chunks as utf-8, keeping incomplete multi-byte
+ * sequences that are split across chunks pending until their remaining bytes arrive.
+ */
+export class Utf8StreamDecoder {
+    private decoder = new TextDecoder("utf-8");
+
+    public decode(data: DataView, start: number, size: number): string {
+        return this.decoder.decode(
+            new Uint8Array(data.buffer, data.byteOffset + start, size), {stream: true});
+    }
 }
 
 export function getIndent(indent: number): string {

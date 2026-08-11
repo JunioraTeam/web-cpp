@@ -1,6 +1,7 @@
 import {InternalError, SyntaxError} from "../../common/error";
 import {Node, SourceLocation} from "../../common/node";
 import {AddressType, Variable} from "../../common/symbol";
+import {toUtf8Bytes} from "../../common/utils";
 import {AccessControl, Type} from "../../type";
 import {ClassType} from "../../type/class_type";
 import {ArrayType, PointerType, ReferenceType} from "../../type/compound_type";
@@ -52,17 +53,18 @@ export class InitDeclarator extends Node {
         }
         if (type instanceof ArrayType && type.size === 0 && type.elementType instanceof CharType
             && this.initializer instanceof StringLiteral) {
-            return new ArrayType(type.elementType, this.initializer.value.length);
+            return new ArrayType(type.elementType, toUtf8Bytes(this.initializer.value).length);
         }
         return type;
     }
 
     private initializeCharArrayFromString(ctx: CompileContext, name: Expression, type: ArrayType, literal: StringLiteral) {
-        if (literal.value.length > type.size) {
+        const bytes = toUtf8Bytes(literal.value);
+        if (bytes.length > type.size) {
             throw new SyntaxError(`initializer string for char array is too long`, this);
         }
         for (let i = 0; i < type.size; i++) {
-            const value = i < literal.value.length ? literal.value.charCodeAt(i) : 0;
+            const value = i < bytes.length ? bytes[i] : 0;
             recycleExpressionResult(ctx, this, new AssignmentExpression(this.location, "=",
                 new SubscriptExpression(this.location, name, IntegerConstant.fromNumber(this.location, i)),
                 IntegerConstant.fromNumber(this.location, value)).codegen(ctx));

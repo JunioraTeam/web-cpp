@@ -49,6 +49,7 @@ export * from "../codegen/expression/cast_expression";
 export * from "../codegen/expression/subscript_expression";
 export * from "../codegen/expression/conditional_expression";
 export * from "../codegen/expression/character_constant";
+export * from "../codegen/expression/boolean_constant";
 export * from "../codegen/expression/postfix_expression";
 export * from "../codegen/expression/anonymous_expression";
 export * from "../codegen/expression/type_info_expression";

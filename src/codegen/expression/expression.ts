@@ -4,7 +4,7 @@ import {Node, SourceLocation} from "../../common/node";
 import {Type} from "../../type";
 import {ConstType} from "../../type/compound_type";
 import {
-    ArithmeticType, CharType, DoubleType,
+    ArithmeticType, BoolType, CharType, DoubleType,
     FloatType, Int16Type,
     Int32Type,
     Int64Type,
@@ -62,7 +62,9 @@ export function doVarInit(ctx: CompileContext, leftType: Type, rightType: Type,
     while (leftType instanceof ConstType) {
         leftType = leftType.elementType;
     }
-    if (leftType instanceof UnsignedCharType) {
+    if (leftType instanceof BoolType) {
+        ctx.memory.data.setUint8(leftValue, parseInt(rightValue) !== 0 ? 1 : 0);
+    } else if (leftType instanceof UnsignedCharType) {
         ctx.memory.data.setUint8(leftValue, parseInt(rightValue));
     } else if (leftType instanceof CharType) {
         ctx.memory.data.setInt8(leftValue, parseInt(rightValue));

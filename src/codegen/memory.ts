@@ -3,6 +3,7 @@
  *  @author zcy <zurl@live.com>
  *  Created at 16/06/2018
  */
+import {toUtf8Bytes} from "../common/utils";
 import {WType} from "../wasm";
 
 export interface FunctionMemoryState {
@@ -69,17 +70,18 @@ export class MemoryLayout {
     public allocString(str: string): number {
         const item = this.stringMap.get(str)!;
         if ( item !== undefined) { return item; }
-        const addr = this.allocData(str.length + 1);
+        const addr = this.allocData(toUtf8Bytes(str).length + 1);
         this.setDataString(addr, str);
         this.stringMap.set(str, addr);
         return addr;
     }
 
     public setDataString(offset: number, value: string) {
-        for (let i = 0; i < value.length; i ++) {
-            this.data.setUint8(offset + i, value.charCodeAt(i));
+        const bytes = toUtf8Bytes(value);
+        for (let i = 0; i < bytes.length; i ++) {
+            this.data.setUint8(offset + i, bytes[i]);
         }
-        this.data.setUint8(offset + value.length, 0);
+        this.data.setUint8(offset + bytes.length, 0);
     }
 
     // interrupt safe

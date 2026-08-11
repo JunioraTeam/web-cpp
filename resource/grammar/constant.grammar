@@ -1,7 +1,13 @@
 Constant
-    = FloatingConstant
+    = BooleanConstant
+    / FloatingConstant
     / IntegerConstant
     / CharacterConstant
+
+BooleanConstant
+    = value:('true' / 'false') !IdentifierPart {
+        return new AST.BooleanConstant(getLocation(), value === 'true');
+    }
 
 IntegerConstant
     // REORDER: HexadecimalConstant / OctalConstant
