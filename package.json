@@ -1,10 +1,11 @@
 {
   "name": "@junioradevteam/web-cpp",
-  "version": "0.8.2",
+  "version": "0.8.3",
   "description": "a c++ compiler in typescript",
   "main": "index.js",
   "scripts": {
     "build": "node build/build.js && tsc",
+    "prepare": "node build/build.js",
     "test": "mocha test/**/*.test.js",
     "lint": "tslint -c tslint.json 'src/**/*.ts'",
     "coverage": "nyc --reporter=lcov --reporter=text mocha test/**/*.test.js",

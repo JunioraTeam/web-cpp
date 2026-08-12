@@ -1,0 +1,29 @@
+# npm ignores .gitignore entirely when this file exists.
+# Mirrors .gitignore, minus the build artifacts that are git-ignored but MUST
+# ship: src/parser/c.lang.ts, src/library/library.ts, ide/js/version.js.
+# Consumers import from src/, so those generated sources are part of the package.
+.idea/
+.nyc_output/
+dist/
+node_modules/
+.DS_Store
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.vs
+.vscode
+*.zip
+*.sh
+*.js.map
+*.bin
+ast.map
+.debug/
+coverage/
+*.wasm
+*.wast
+*.wat
+ide/.cache
+ide/dist
+.parcel-browser-test/
+.cache/
+.specstory/
