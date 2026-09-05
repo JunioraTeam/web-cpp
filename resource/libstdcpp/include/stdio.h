@@ -1,6 +1,8 @@
 #ifndef _STDIO_H
 #define _STDIO_H
 
+#include <stddef.h>
+
 __libcall void dump_stack_info();
 
 

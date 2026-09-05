@@ -1,11 +1,9 @@
 import {Directive, SourceLocation} from "../../common/node";
-import {AccessControl} from "../../type";
+import {AccessControl, Type} from "../../type";
 import {ClassType} from "../../type/class_type";
-import {TypeName} from "../class/type_name";
 import {CompileContext} from "../context";
 import {Identifier} from "../expression/identifier";
 import {MemberExpression} from "../class/member_expression";
-import {UsingStatement} from "../statement/using_statement";
 import {Expression} from "../expression/expression";
 import {InitDeclarator} from "./init_declartor";
 import {IdentifierDeclarator} from "./identifier_declarator";
@@ -27,9 +25,7 @@ export class Declaration extends Directive {
         const isTypedef = this.specifiers.specifiers.includes("typedef");
         for (const declarator of this.initDeclarators) {
             if (isTypedef) {
-                const name = declarator.declarator.getNameRequired().getPlainName(ctx);
-                new UsingStatement(this.location, Identifier.fromString(this.location, name),
-                    new TypeName(this.location, this.specifiers, declarator.declarator)).codegen(ctx);
+                this.declareTypedef(ctx, declarator, type);
             } else {
                 declarator.declareInClass(ctx, {
                     type,
@@ -53,9 +49,7 @@ export class Declaration extends Directive {
         }
         for (const declarator of this.initDeclarators) {
             if (isTypedef) {
-                const name = declarator.declarator.getNameRequired().getPlainName(ctx);
-                new UsingStatement(this.location, Identifier.fromString(this.location, name),
-                    new TypeName(this.location, this.specifiers, declarator.declarator)).codegen(ctx);
+                this.declareTypedef(ctx, declarator, type!);
             } else if (declarator.declarator instanceof StructuredBindingDeclarator) {
                 this.codegenStructuredBinding(ctx, declarator);
             } else {
@@ -70,6 +64,15 @@ export class Declaration extends Directive {
                 });
             }
         }
+    }
+
+    /**
+     * the specifier list is resolved once for the whole declaration, resolving it again per
+     * declarator would define 'typedef struct T {...} S;' twice and report T as redefined
+     */
+    private declareTypedef(ctx: CompileContext, declarator: InitDeclarator, baseType: Type): void {
+        const name = declarator.declarator.getNameRequired().getPlainName(ctx);
+        ctx.scopeManager.define(name, declarator.declarator.getType(ctx, baseType), this);
     }
 
     private codegenStructuredBinding(ctx: CompileContext, declarator: InitDeclarator): void {

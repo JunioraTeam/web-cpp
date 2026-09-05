@@ -27,11 +27,12 @@ using namespace std;
 const double PI = 3.14159265359;
 int main()
 {
+    // the default stream precision is 6 significant digits
     cout << "PI Number is : " << PI;
     return 0;
 }
         `;
-        const expectOutput = `PI Number is : 3.14159265359`;
+        const expectOutput = `PI Number is : 3.14159`;
         return await TestBase.testFullCode(testCode, expectOutput, {isCpp: true});
     });
     it('test bool cast from arithmetic types', async function () {

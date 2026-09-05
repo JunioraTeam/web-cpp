@@ -1,5 +1,6 @@
 Statement
     = CaseStatement
+    / TryBlock
     / SelectionStatement
     / IterationStatement
     / JumpStatement
@@ -107,6 +108,9 @@ JumpStatement
     }
     / 'return' !IdentifierPart _ argument:Expression? _ &!';' {
         return new AST.ReturnStatement(getLocation(), argument);
+    }
+    / 'throw' !IdentifierPart _ argument:AssignmentExpression? _ &!';' {
+        return new AST.ThrowStatement(getLocation(), argument);
     }
 
 

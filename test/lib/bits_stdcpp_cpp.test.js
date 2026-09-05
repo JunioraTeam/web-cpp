@@ -38,4 +38,18 @@ int main() {
         const expectOutput = `5`;
         return await TestBase.testFullCode(testCode, expectOutput, {isCpp: true});
     });
+    it('brings in the string and manipulator headers', async function() {
+        const testCode = `
+#include <bits/stdc++.h>
+using namespace std;
+
+int main() {
+    stringstream stream;
+    stream << 1 << " " << 2.5;
+    cout << "[" << setw(8) << stream.str() << "]";
+    return 0;
+}
+        `;
+        return await TestBase.testFullCode(testCode, `[   1 2.5]`, {isCpp: true});
+    });
 });

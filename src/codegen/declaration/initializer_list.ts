@@ -44,13 +44,16 @@ export class InitializerList extends Node {
                             IntegerConstant.fromNumber(this.location, i)),
                         item.initializer)).codegen(ctx);
             } else {
-                if (!(type.elementType instanceof ArrayType) ) {
+                const element = new SubscriptExpression(node.location, node,
+                    IntegerConstant.fromNumber(node.location, i));
+                if (type.elementType instanceof ArrayType) {
+                    item.initializer.initializeArray(ctx, element, type.elementType);
+                } else if (type.elementType instanceof ClassType) {
+                    new ExpressionStatement(this.location,
+                        new AssignmentExpression(this.location, "=", element, item.initializer)).codegen(ctx);
+                } else {
                     throw new SyntaxError(`illegal inner initializer list`, node);
                 }
-                item.initializer.initializeArray(ctx,
-                    new SubscriptExpression(node.location,
-                        node,
-                        IntegerConstant.fromNumber(node.location, i)), type.elementType);
             }
         }
     }
@@ -105,6 +108,40 @@ export class InitializerList extends Node {
     public canInitializeWithPushBack(ctx: CompileContext, type: ClassType): boolean {
         const lookupResult = type.getMember(ctx, "push_back", this);
         return lookupResult instanceof FunctionLookUpResult;
+    }
+
+    /**
+     * `struct Point { int x, y; }; Point p = {1, 2};` - a plain aggregate has no constructor
+     * taking the braced values, its members are initialized one by one instead.
+     */
+    public canInitializeAsAggregate(ctx: CompileContext, type: ClassType): boolean {
+        if (type.inheritance.length !== 0 || type.requireVPtr || type.isUnion) {
+            return false;
+        }
+        if (this.items.length > type.fields.length) {
+            return false;
+        }
+        try {
+            this.getClassConstructorArgumentTypes(ctx, type);
+            return false;
+        } catch (e) {
+            return true;
+        }
+    }
+
+    public initializeAggregate(ctx: CompileContext, node: Expression, type: ClassType) {
+        for (let i = 0; i < this.items.length; i++) {
+            const field = type.fields[i];
+            const member = new MemberExpression(this.location, node, false,
+                Identifier.fromString(this.location, field.name));
+            const initializer = this.items[i].initializer;
+            if (!(initializer instanceof Expression) && field.type instanceof ArrayType) {
+                initializer.initializeArray(ctx, member, field.type);
+                continue;
+            }
+            new ExpressionStatement(this.location,
+                new AssignmentExpression(this.location, "=", member, initializer)).codegen(ctx);
+        }
     }
 
     private getClassConstructorArgumentTypes(ctx: CompileContext, type: ClassType): Type[] {
@@ -191,6 +228,10 @@ export class InitializerListExpression extends Expression {
                             Identifier.fromString(this.location, "push_back")),
                         [arg]).codegen(ctx));
                 }
+            } else if (this.initializer.canInitializeAsAggregate(ctx, this.type)) {
+                recycleExpressionResult(ctx, this, new CallExpression(this.location,
+                    Identifier.fromString(this.location, ctorName), [thisPtr]).codegen(ctx));
+                this.initializer.initializeAggregate(ctx, target, this.type);
             } else {
                 const expr = new CallExpression(this.location, Identifier.fromString(this.location, ctorName), [
                     thisPtr,

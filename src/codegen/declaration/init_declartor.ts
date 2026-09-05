@@ -89,6 +89,9 @@ export class InitDeclarator extends Node {
                                     Identifier.fromString(this.location, "push_back")),
                                 [arg]).codegen(ctx));
                         }
+                    } else if (this.initializer.canInitializeAsAggregate(ctx, type)) {
+                        new ObjectInitializer(this.initializer.location, []).initialize(ctx, name, type);
+                        this.initializer.initializeAggregate(ctx, name, type);
                     } else {
                         const args = this.initializer.toClassConstructorArguments(ctx, type);
                         new ObjectInitializer(this.initializer.location, args).initialize(ctx, name, type);

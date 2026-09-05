@@ -488,7 +488,37 @@ export const OpTypeMap = new Map<UnaryOperator | BinaryOperator, WType>([
     ...createMapItem(F64Convert, WType.f64),
 ]);
 
+// every wasm comparison consumes two operands of its own type but yields an i32,
+// so its result type is not the type the opcode is named after
+const comparisonOperators = new Set<BinaryOperator>([
+    I32Binary.eq, I32Binary.ne,
+    I32Binary.lt_s, I32Binary.lt_u, I32Binary.gt_s, I32Binary.gt_u,
+    I32Binary.le_s, I32Binary.le_u, I32Binary.ge_s, I32Binary.ge_u,
+    I64Binary.eq, I64Binary.ne,
+    I64Binary.lt_s, I64Binary.lt_u, I64Binary.gt_s, I64Binary.gt_u,
+    I64Binary.le_s, I64Binary.le_u, I64Binary.ge_s, I64Binary.ge_u,
+    F32Binary.eq, F32Binary.ne, F32Binary.lt, F32Binary.gt, F32Binary.le, F32Binary.ge,
+    F64Binary.eq, F64Binary.ne, F64Binary.lt, F64Binary.gt, F64Binary.le, F64Binary.ge,
+]);
+
+export function isComparisonOperator(ope: BinaryOperator): boolean {
+    return comparisonOperators.has(ope);
+}
+
+// wasm has no 8/16 bit values on the stack, they live as i32 and keep their signedness
+function getConversionWidth(type: WType): WType {
+    switch (type) {
+        case WType.i8:
+        case WType.i16: return WType.i32;
+        case WType.u8:
+        case WType.u16: return WType.u32;
+    }
+    return type;
+}
+
 export function getTypeConvertOpe(srcType: WType, dstType: WType): ConvertOperator | null {
+    srcType = getConversionWidth(srcType);
+    dstType = getConversionWidth(dstType);
     switch (srcType) {
         case WType.i32:
             switch (dstType) {

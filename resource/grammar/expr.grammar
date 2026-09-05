@@ -160,8 +160,31 @@ PrimaryExpression
     }
 
 LambdaExpression
-    = '[' _ ']' _ '(' _ parameters:ParameterList? _ &!')' _ body:CompoundStatement {
-        return new AST.LambdaExpression(getLocation(), parameters || new AST.ParameterList(getLocation()), body);
+    = '[' _ LambdaCaptureList? _ ']' _ parameters:LambdaParameters? _ ret:LambdaReturnType? _ body:CompoundStatement {
+        return new AST.LambdaExpression(getLocation(), parameters || new AST.ParameterList(getLocation()), body, ret);
+    }
+
+// the capture list is accepted but nothing is captured, a lambda is a plain function here
+LambdaCaptureList
+    = head:LambdaCapture tail:(_ ',' _ LambdaCapture)* {
+        return buildList(head, tail, 3);
+    }
+
+LambdaCapture
+    = '&' _ Identifier
+    / 'this' !IdentifierPart
+    / '&'
+    / '='
+    / Identifier
+
+LambdaParameters
+    = '(' _ parameters:ParameterList? _ &!')' {
+        return parameters || new AST.ParameterList(getLocation());
+    }
+
+LambdaReturnType
+    = '->' _ type:TypeName {
+        return type;
     }
 
 

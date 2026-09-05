@@ -23,7 +23,7 @@ import {MemberExpression} from "../class/member_expression";
 import {CompileContext} from "../context";
 import {doConversion, doTypePromote, doValuePromote, getInStackSize} from "../conversion";
 import {AnonymousExpression} from "../expression/anonymous_expression";
-import {Expression, ExpressionResult} from "../expression/expression";
+import {Expression, ExpressionResult, recycleExpressionResult} from "../expression/expression";
 import {Identifier} from "../expression/identifier";
 import {IntegerConstant} from "../expression/integer_constant";
 import {UnaryExpression} from "../expression/unary_expression";
@@ -31,6 +31,16 @@ import {doFunctionOverloadResolution, doWeakTypeMatch, isFunctionExists} from ".
 import {ClassConstructExpression, InitializerList, InitializerListExpression} from "../declaration/initializer_list";
 
 type CallArgument = Expression | InitializerList;
+
+/**
+ * gives the argument area back, unless a temporary was allocated below it while it was
+ * reserved, that temporary lives as long as the function and must not be handed out again
+ */
+function releaseArgumentArea(ctx: CompileContext, savedStackPtr: number, stackSize: number): void {
+    if (ctx.memory.currentState.stackPtr === savedStackPtr - stackSize) {
+        ctx.memory.currentState.stackPtr = savedStackPtr;
+    }
+}
 
 export class CallExpression extends Expression {
     public callee: Expression;
@@ -53,6 +63,9 @@ export class CallExpression extends Expression {
 
     private canUseInitializerListArgument(ctx: CompileContext, initializer: InitializerList, parameterType: Type): boolean {
         if (parameterType instanceof ClassType) {
+            if (initializer.canInitializeAsAggregate(ctx, parameterType)) {
+                return true;
+            }
             try {
                 initializer.toClassConstructorArguments(ctx, parameterType);
                 return true;
@@ -233,9 +246,10 @@ export class CallExpression extends Expression {
         }
         // compute finish
 
+        const savedStackPtr = ctx.memory.currentState.stackPtr;
         ctx.memory.currentState.stackPtr -= stackSize;
         const arguExprs = [...thisPtrs, ... callArguments.map((x) => x.codegen(ctx))];
-        ctx.memory.currentState.stackPtr += stackSize;
+        releaseArgumentArea(ctx, savedStackPtr, stackSize);
 
         if (targetFunction instanceof FunctionEntity && funcType.parameterTypes.length > arguExprs.length) {
             // could be default parameters
@@ -279,6 +293,10 @@ export class CallExpression extends Expression {
             }
         }
 
+        // copying a class argument may call a constructor, whose own frame would otherwise
+        // be laid out on top of the argument area that is being filled in right here
+        const marshallStackPtr = ctx.memory.currentState.stackPtr;
+        ctx.memory.currentState.stackPtr -= stackSize;
         for (let i = funcType.parameterTypes.length - 1; i >= 0; i--) {
             let dstType = funcType.parameterTypes[i];
             if (dstType instanceof ArrayType) {
@@ -297,21 +315,28 @@ export class CallExpression extends Expression {
                         .createLoadAddress(ctx),
                 });
                 parameterOffset += parameterSize;
-                const right = new AnonymousExpression(this.location, src);
+                let right: Expression = new AnonymousExpression(this.location, src);
                 const fullName = dstType.fullName + "::#" + dstType.shortName;
-                let expr: ExpressionResult;
                 if (isFunctionExists(ctx, fullName, [leftPtrType, rightType], null)) {
-                    expr = new CallExpression(this.location,
-                        Identifier.fromString(this.location, fullName),
-                        [left, right]).codegen(ctx);
-                } else {
-                    const len = dstType.length;
-                    expr = new CallExpression(this.location, Identifier.fromString(this.location, "::memcpy"), [
+                    // the argument area is not a normal object, a constructor writing into it
+                    // would be undone by the frame of that very constructor call. Build the copy
+                    // in a temporary of this frame first and move it in afterwards.
+                    const [tmpVarName] = ctx.allocTmpVar(dstType, this, true);
+                    const tmpVar = Identifier.fromString(this.location, tmpVarName);
+                    recycleExpressionResult(ctx, this, new CallExpression(this.location,
+                        Identifier.fromString(this.location, fullName), [
+                            new UnaryExpression(this.location, "&", tmpVar),
+                            right,
+                        ]).codegen(ctx));
+                    right = tmpVar;
+                }
+                const len = dstType.length;
+                const expr = new CallExpression(this.location,
+                    Identifier.fromString(this.location, "::memcpy"), [
                         left,
                         new UnaryExpression(this.location, "&", right),
                         new IntegerConstant(this.location, 10, Long.fromInt(len), len.toString(), null),
                     ]).codegen(ctx);
-                }
                 argus.push(expr.expr);
             } else {
                 const srcExpr = doConversion(ctx, dstType, src, this, false, true).fold();
@@ -326,6 +351,7 @@ export class CallExpression extends Expression {
                 }
             }
         }
+        releaseArgumentArea(ctx, marshallStackPtr, stackSize);
         argus.reverse();    // wasm call standard => push $0 first
 
         const afterStatements: WStatement[] = [];
@@ -424,14 +450,7 @@ export class CallExpression extends Expression {
                 isLeft: true,
             };
         } else if (funcType.returnType instanceof ClassType) {
-            return {
-                type: funcType.returnType,
-                expr: new WAddressHolder(
-                    funcExpr,
-                    AddressType.RVALUE,
-                    this.location),
-                isLeft: true,
-            };
+            return this.saveReturnedObject(ctx, funcType.returnType, funcExpr);
         } else {
             return {
                 type: funcType.returnType,
@@ -439,6 +458,29 @@ export class CallExpression extends Expression {
                 isLeft: false,
             };
         }
+    }
+
+    /**
+     * a function returning a class by value hands back the address of an object that lived in
+     * its own (already popped) stack frame, so the next call reuses that memory. Copy it into a
+     * temporary of the caller before anything else runs.
+     */
+    private saveReturnedObject(ctx: CompileContext, returnType: ClassType,
+                               funcExpr: WExpression): ExpressionResult {
+        const [tmpVarName] = ctx.allocTmpVar(returnType, this, true);
+        const tmpVar = Identifier.fromString(this.location, tmpVarName);
+        const copyExpr = new CallExpression(this.location,
+            Identifier.fromString(this.location, "::memcpy"), [
+                new UnaryExpression(this.location, "&", tmpVar),
+                new AnonymousExpression(this.location, {
+                    type: new PointerType(returnType),
+                    isLeft: false,
+                    expr: funcExpr,
+                }),
+                IntegerConstant.fromNumber(this.location, returnType.length),
+            ]).codegen(ctx);
+        recycleExpressionResult(ctx, this, copyExpr);
+        return tmpVar.codegen(ctx);
     }
 
     public deduceType(ctx: CompileContext): Type {

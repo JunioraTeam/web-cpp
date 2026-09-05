@@ -11,6 +11,8 @@ function getAlign(value: string | number) {
     return 0;
 }
 
+const INITIAL_BUFFER_SIZE = 65536;
+
 export class WASMEmitter extends Emitter {
     public buffer: ArrayBuffer;
     public view: DataView;
@@ -20,7 +22,7 @@ export class WASMEmitter extends Emitter {
 
     public constructor(externMap: Map<string, number>, sourceMap: Map<string, SourceMap>) {
         super(externMap, sourceMap);
-        this.buffer = new ArrayBuffer(20000);
+        this.buffer = new ArrayBuffer(INITIAL_BUFFER_SIZE);
         this.view = new DataView(this.buffer);
         this.now = 0;
         this.nowSize = 0;
@@ -28,6 +30,7 @@ export class WASMEmitter extends Emitter {
     }
 
     public createLengthSlot(): [number, number] {
+        this.reserve(4);
         const slot = [this.nowSize, this.now] as [number, number];
         this.slots.push(slot);
         this.now += 4;
@@ -40,12 +43,29 @@ export class WASMEmitter extends Emitter {
         this.view.setUint32(slot[1], len);
     }
 
+    // the size of a module is not known up front, grow instead of overflowing the buffer
+    private reserve(size: number): void {
+        if (this.now + size <= this.buffer.byteLength) {
+            return;
+        }
+        let capacity = this.buffer.byteLength;
+        while (capacity < this.now + size) {
+            capacity *= 2;
+        }
+        const grown = new ArrayBuffer(capacity);
+        new Uint8Array(grown).set(new Uint8Array(this.buffer));
+        this.buffer = grown;
+        this.view = new DataView(this.buffer);
+    }
+
     public writeByte(byte: number): void {
+        this.reserve(1);
         this.view.setUint8(this.now++, byte);
         this.nowSize++;
     }
 
     public writeBytes(bytes: number[]): void {
+        this.reserve(bytes.length);
         for (const byte of bytes) {
             this.view.setUint8(this.now++, byte);
             this.nowSize++;

@@ -33,11 +33,18 @@ class __string {
         capacity_ = new_capacity;
     }
 
-    void assign_cstr(char *value) {
+    void assign_cstr(const char *value) {
         int len = strlen(value);
         ensure_capacity(len + 1);
         memcpy(data_, value, len + 1);
         size_ = len;
+    }
+
+    void assign_range(const char *value, int len) {
+        ensure_capacity(len + 1);
+        memcpy(data_, value, len);
+        size_ = len;
+        data_[size_] = 0;
     }
 
 public:
@@ -45,13 +52,34 @@ public:
         init_empty();
     }
 
-    __string(char *value) {
+    __string(const char *value) {
         init_empty();
         assign_cstr(value);
     }
 
-    void operator=(char *value) {
+    __string(int num, char value) {
+        init_empty();
+        ensure_capacity(num + 1);
+        for (int i = 0; i < num; i++) {
+            data_[i] = value;
+        }
+        size_ = num;
+        data_[size_] = 0;
+    }
+
+    // the compiler copies class objects field by field, so a string built from another one
+    // would share its buffer: take a copy of the characters instead
+    __string(__string& value) {
+        init_empty();
+        assign_range(value.data_, value.size_);
+    }
+
+    void operator=(const char *value) {
         assign_cstr(value);
+    }
+
+    void operator=(__string& value) {
+        assign_range(value.data_, value.size_);
     }
 
     int size() {
@@ -78,8 +106,27 @@ public:
         return data_;
     }
 
+    char *data() {
+        return data_;
+    }
+
     char& operator[](int index) {
         return data_[index];
+    }
+
+    char& at(int index) {
+        if (index < 0 || index >= size_) {
+            __input_error("string index out of range");
+        }
+        return data_[index];
+    }
+
+    char& front() {
+        return data_[0];
+    }
+
+    char& back() {
+        return data_[size_ - 1];
     }
 
     void clear() {
@@ -94,20 +141,441 @@ public:
         data_[size_] = 0;
     }
 
-    void append(char *value) {
+    void pop_back() {
+        if (size_ > 0) {
+            size_ = size_ - 1;
+            data_[size_] = 0;
+        }
+    }
+
+    void resize(int num, char value) {
+        ensure_capacity(num + 1);
+        for (int i = size_; i < num; i++) {
+            data_[i] = value;
+        }
+        size_ = num;
+        data_[size_] = 0;
+    }
+
+    void resize(int num) {
+        this->resize(num, 0);
+    }
+
+    void append(const char *value) {
         int len = strlen(value);
         ensure_capacity(size_ + len + 1);
         memcpy(data_ + size_, value, len + 1);
         size_ = size_ + len;
     }
 
-    void operator+=(char *value) {
+    void append(__string& value) {
+        int len = value.size_;
+        ensure_capacity(size_ + len + 1);
+        memcpy(data_ + size_, value.data_, len);
+        size_ = size_ + len;
+        data_[size_] = 0;
+    }
+
+    void operator+=(const char *value) {
         append(value);
+    }
+
+    void operator+=(__string& value) {
+        append(value);
+    }
+
+    void operator+=(char value) {
+        push_back(value);
+    }
+
+    __string operator+(const char *value) {
+        __string result = *this;
+        result.append(value);
+        return result;
+    }
+
+    __string operator+(__string& value) {
+        __string result = *this;
+        result.append(value);
+        return result;
+    }
+
+    __string operator+(char value) {
+        __string result = *this;
+        result.push_back(value);
+        return result;
+    }
+
+    int compare(const char *value) {
+        return strcmp(data_, value);
+    }
+
+    int compare(__string& value) {
+        return strcmp(data_, value.data_);
+    }
+
+    bool operator==(const char *value) {
+        return strcmp(data_, value) == 0;
+    }
+
+    bool operator!=(const char *value) {
+        return strcmp(data_, value) != 0;
+    }
+
+    bool operator<(const char *value) {
+        return strcmp(data_, value) < 0;
+    }
+
+    bool operator>(const char *value) {
+        return strcmp(data_, value) > 0;
+    }
+
+    bool operator<=(const char *value) {
+        return strcmp(data_, value) <= 0;
+    }
+
+    bool operator>=(const char *value) {
+        return strcmp(data_, value) >= 0;
+    }
+
+    bool operator==(__string& value) {
+        return strcmp(data_, value.data_) == 0;
+    }
+
+    bool operator!=(__string& value) {
+        return strcmp(data_, value.data_) != 0;
+    }
+
+    bool operator<(__string& value) {
+        return strcmp(data_, value.data_) < 0;
+    }
+
+    bool operator>(__string& value) {
+        return strcmp(data_, value.data_) > 0;
+    }
+
+    bool operator<=(__string& value) {
+        return strcmp(data_, value.data_) <= 0;
+    }
+
+    bool operator>=(__string& value) {
+        return strcmp(data_, value.data_) >= 0;
+    }
+
+    __string substr(int pos, int num) {
+        if (pos < 0 || pos > size_) {
+            __input_error("string index out of range");
+        }
+        if (num < 0 || pos + num > size_) {
+            num = size_ - pos;
+        }
+        __string result;
+        result.assign_range(data_ + pos, num);
+        return result;
+    }
+
+    __string substr(int pos) {
+        return this->substr(pos, size_ - pos);
+    }
+
+    // -1 when there is no match, std::string::npos does not exist here
+    int find(const char *value, int pos) {
+        int len = strlen(value);
+        if (pos < 0) {
+            pos = 0;
+        }
+        for (int i = pos; i + len <= size_; i++) {
+            if (memcmp(data_ + i, value, len) == 0) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    int find(const char *value) {
+        return this->find(value, 0);
+    }
+
+    int find(__string& value, int pos) {
+        return this->find(value.data_, pos);
+    }
+
+    int find(__string& value) {
+        return this->find(value.data_, 0);
+    }
+
+    int find(char value, int pos) {
+        for (int i = pos < 0 ? 0 : pos; i < size_; i++) {
+            if (data_[i] == value) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    int find(char value) {
+        return this->find(value, 0);
+    }
+
+    int rfind(const char *value) {
+        int len = strlen(value);
+        for (int i = size_ - len; i >= 0; i--) {
+            if (memcmp(data_ + i, value, len) == 0) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    int rfind(char value) {
+        for (int i = size_ - 1; i >= 0; i--) {
+            if (data_[i] == value) {
+                return i;
+            }
+        }
+        return -1;
     }
 };
 
 
 typedef __string string;
+
+// the digits are taken without negating first, so the smallest long long still works
+string to_string(long long value) {
+    char buffer[24];
+    int index = 0;
+    bool negative = value < 0;
+    if (value == 0) {
+        buffer[index] = '0';
+        index = index + 1;
+    }
+    while (value != 0) {
+        long long rest = value % 10;
+        if (rest < 0) {
+            rest = -rest;
+        }
+        buffer[index] = (char) ('0' + (int) rest);
+        index = index + 1;
+        value = value / 10;
+    }
+    string result;
+    if (negative) {
+        result.push_back('-');
+    }
+    for (int i = index - 1; i >= 0; i--) {
+        result.push_back(buffer[i]);
+    }
+    return result;
+}
+
+string to_string(unsigned long long value) {
+    char buffer[24];
+    int index = 0;
+    if (value == 0) {
+        buffer[index] = '0';
+        index = index + 1;
+    }
+    while (value > 0) {
+        buffer[index] = (char) ('0' + (int) (value % 10));
+        index = index + 1;
+        value = value / 10;
+    }
+    string result;
+    for (int i = index - 1; i >= 0; i--) {
+        result.push_back(buffer[i]);
+    }
+    return result;
+}
+
+string to_string(int value) {
+    return to_string((long long) value);
+}
+
+string to_string(unsigned int value) {
+    return to_string((unsigned long long) value);
+}
+
+// value rounded to a fixed number of decimals, the form printf gives for %f
+string __format_fixed(double value, int decimals) {
+    string result;
+    if (value < 0) {
+        result.push_back('-');
+        value = -value;
+    }
+    if (decimals < 0) {
+        decimals = 0;
+    }
+    double scale = 1;
+    for (int i = 0; i < decimals; i++) {
+        scale = scale * 10;
+    }
+    long long factor = (long long) scale;
+    long long total = (long long) (value * scale + 0.5);
+    long long integer_part = total / factor;
+    long long fraction = total - integer_part * factor;
+    string digits = to_string(integer_part);
+    result += digits;
+    if (decimals > 0) {
+        result.push_back('.');
+        string fraction_text = to_string(fraction);
+        for (int i = fraction_text.size(); i < decimals; i++) {
+            result.push_back('0');
+        }
+        result += fraction_text;
+    }
+    return result;
+}
+
+// how many places the value has to move to sit between 1 and 10
+int __decimal_exponent(double value) {
+    int exponent = 0;
+    if (value <= 0) {
+        return 0;
+    }
+    while (value >= 10) {
+        value = value / 10;
+        exponent = exponent + 1;
+    }
+    while (value < 1) {
+        value = value * 10;
+        exponent = exponent - 1;
+    }
+    return exponent;
+}
+
+/**
+ * the two formats a stream can be in: fixed counts decimals, the default counts significant
+ * digits and drops the zeros trailing the last one
+ */
+string __format_double(double value, int precision, bool fixed_notation) {
+    if (fixed_notation) {
+        return __format_fixed(value, precision);
+    }
+    if (precision < 1) {
+        precision = 1;
+    }
+    double magnitude = value < 0 ? -value : value;
+    int decimals = precision - 1 - __decimal_exponent(magnitude);
+    if (decimals < 0) {
+        decimals = 0;
+    }
+    string text = __format_fixed(value, decimals);
+    if (decimals > 0) {
+        while (!text.empty() && text.back() == '0') {
+            text.pop_back();
+        }
+        if (!text.empty() && text.back() == '.') {
+            text.pop_back();
+        }
+    }
+    return text;
+}
+
+string to_string(double value) {
+    return __format_fixed(value, 6);
+}
+
+string to_string(float value) {
+    return to_string((double) value);
+}
+
+long long stoll(const char *value) {
+    int index = 0;
+    while (value[index] == ' ' || value[index] == '\t' || value[index] == '\n' || value[index] == '\r') {
+        index = index + 1;
+    }
+    bool negative = false;
+    if (value[index] == '-') {
+        negative = true;
+        index = index + 1;
+    } else if (value[index] == '+') {
+        index = index + 1;
+    }
+    bool converted = false;
+    long long result = 0;
+    while (value[index] >= '0' && value[index] <= '9') {
+        result = result * 10 + (long long) (value[index] - '0');
+        index = index + 1;
+        converted = true;
+    }
+    if (!converted) {
+        __input_error("no conversion could be performed");
+    }
+    if (negative) {
+        return -result;
+    }
+    return result;
+}
+
+long long stoll(string& value) {
+    return stoll(value.c_str());
+}
+
+int stoi(const char *value) {
+    return (int) stoll(value);
+}
+
+int stoi(string& value) {
+    return (int) stoll(value.c_str());
+}
+
+long stol(const char *value) {
+    return (long) stoll(value);
+}
+
+long stol(string& value) {
+    return (long) stoll(value.c_str());
+}
+
+double stod(const char *value) {
+    int index = 0;
+    while (value[index] == ' ' || value[index] == '\t' || value[index] == '\n' || value[index] == '\r') {
+        index = index + 1;
+    }
+    bool negative = false;
+    if (value[index] == '-') {
+        negative = true;
+        index = index + 1;
+    } else if (value[index] == '+') {
+        index = index + 1;
+    }
+    bool converted = false;
+    double result = 0;
+    while (value[index] >= '0' && value[index] <= '9') {
+        result = result * 10 + (double) (value[index] - '0');
+        index = index + 1;
+        converted = true;
+    }
+    if (value[index] == '.') {
+        index = index + 1;
+        double scale = 0.1;
+        while (value[index] >= '0' && value[index] <= '9') {
+            result = result + (double) (value[index] - '0') * scale;
+            scale = scale / 10;
+            index = index + 1;
+            converted = true;
+        }
+    }
+    if (!converted) {
+        __input_error("no conversion could be performed");
+    }
+    if (negative) {
+        return -result;
+    }
+    return result;
+}
+
+double stod(string& value) {
+    return stod(value.c_str());
+}
+
+float stof(const char *value) {
+    return (float) stod(value);
+}
+
+float stof(string& value) {
+    return (float) stod(value.c_str());
+}
 
 #ifdef _CPP_ALGORITHM
 string *lower_bound(string *first, string *last, char *value,

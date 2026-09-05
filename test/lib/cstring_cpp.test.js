@@ -47,4 +47,37 @@ int main() {
         const expectOutput = `4 3 abc`;
         return await TestBase.testFullCode(testCode, expectOutput, {isCpp: true});
     });
+
+    it('orders strings by the first argument in strcmp', async function() {
+        const testCode = `
+#include <cstring>
+#include <iostream>
+using namespace std;
+
+int main() {
+    cout << strcmp("ab", "ac") << " " << strcmp("ac", "ab") << " " << strcmp("ab", "ab") << " ";
+    cout << strcmp("ab", "abc") << " " << strcmp("abc", "ab") << " " << strcmp("", "");
+    return 0;
+}
+        `;
+        const expectOutput = `-1 1 0 -1 1 0`;
+        return await TestBase.testFullCode(testCode, expectOutput, {isCpp: true});
+    });
+
+    it('compares only the requested prefix in strncmp', async function() {
+        const testCode = `
+#include <cstring>
+#include <iostream>
+using namespace std;
+
+int main() {
+    cout << strncmp("abcd", "abzz", 2) << " " << strncmp("abcd", "abzz", 3) << " ";
+    cout << strncmp("abzz", "abcd", 3) << " " << strncmp("ab", "ab", 5) << " ";
+    cout << strncmp("ab", "abc", 3);
+    return 0;
+}
+        `;
+        const expectOutput = `0 -1 1 0 -1`;
+        return await TestBase.testFullCode(testCode, expectOutput, {isCpp: true});
+    });
 });

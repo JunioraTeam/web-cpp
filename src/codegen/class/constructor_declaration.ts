@@ -1,7 +1,7 @@
 import {InternalError, SyntaxError} from "../../common/error";
 import {ClassDirective, Directive, Node, SourceLocation} from "../../common/node";
 import {FunctionEntity} from "../../common/symbol";
-import {AccessControl} from "../../type";
+import {AccessControl, Type} from "../../type";
 import {ClassType} from "../../type/class_type";
 import {PointerType} from "../../type/compound_type";
 import {CppFunctionType, FunctionType} from "../../type/function_type";
@@ -11,7 +11,7 @@ import {ObjectInitializer} from "../declaration/object_initializer";
 import {AnonymousCastExpression, AnonymousExpression} from "../expression/anonymous_expression";
 import {AssignmentExpression} from "../expression/assignment_expression";
 import {BinaryExpression} from "../expression/binary_expression";
-import {Expression} from "../expression/expression";
+import {Expression, ExpressionResult} from "../expression/expression";
 import {Identifier} from "../expression/identifier";
 import {IntegerConstant} from "../expression/integer_constant";
 import {UnaryExpression} from "../expression/unary_expression";
@@ -25,6 +25,38 @@ import {ExpressionStatement} from "../statement/expression_statement";
 import {Statement} from "../statement/statement";
 import {MemberExpression} from "./member_expression";
 import {WGetAddress, WMemoryLocation} from "../../wasm";
+
+/**
+ * a member initializer `Ctor(...): field(value)` constructs the field, its storage is still raw
+ * memory at that point, so an assignment operator would read uninitialized members of it. The
+ * choice can only be made while generating the constructor body, when the parameters are in scope.
+ */
+class MemberInitializeExpression extends Expression {
+    public fieldType: ClassType;
+    public target: Expression;
+    public init: Expression;
+
+    constructor(location: SourceLocation, fieldType: ClassType, target: Expression, init: Expression) {
+        super(location);
+        this.fieldType = fieldType;
+        this.target = target;
+        this.init = init;
+    }
+
+    public codegen(ctx: CompileContext): ExpressionResult {
+        const ctorName = this.fieldType.fullName + "::#" + this.fieldType.shortName;
+        if (isFunctionExists(ctx, ctorName,
+            [new PointerType(this.fieldType), this.init.deduceType(ctx)])) {
+            return new CallExpression(this.location, Identifier.fromString(this.location, ctorName),
+                [new UnaryExpression(this.location, "&", this.target), this.init]).codegen(ctx);
+        }
+        return new AssignmentExpression(this.location, "=", this.target, this.init).codegen(ctx);
+    }
+
+    public deduceType(ctx: CompileContext): Type {
+        return this.fieldType;
+    }
+}
 
 export class ConstructorDeclaration extends ClassDirective {
     public name: Identifier;
@@ -169,9 +201,11 @@ export class ConstructorDeclaration extends ClassDirective {
             const left = new MemberExpression(this.location, Identifier.fromString(this.location, "this"),
                 true, Identifier.fromString(this.location, field.name));
             if (initMap.get(field.name) !== undefined) {
+                const init = initMap.get(field.name)!;
                 statements.push(new ExpressionStatement(this.location,
-                    new AssignmentExpression(this.location, "=",
-                        left, initMap.get(field.name)!)));
+                    field.type instanceof ClassType
+                        ? new MemberInitializeExpression(this.location, field.type, left, init)
+                        : new AssignmentExpression(this.location, "=", left, init)));
             } else if (field.initializer !== null) {
                 if (field.initializer instanceof ObjectInitializer) {
                     if (!(field.type instanceof ClassType)) {

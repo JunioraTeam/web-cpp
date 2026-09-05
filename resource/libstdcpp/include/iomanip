@@ -1,0 +1,79 @@
+#ifndef _CPP_IOMANIP
+#define _CPP_IOMANIP
+
+#include <iostream>
+
+namespace std {
+
+// each manipulator is its own type so that operator<< can tell them apart
+class __setprecision_manip {
+public:
+    int value;
+};
+
+class __setw_manip {
+public:
+    int value;
+};
+
+class __setfill_manip {
+public:
+    int value;
+};
+
+__setprecision_manip setprecision(int value) {
+    __setprecision_manip result;
+    result.value = value;
+    return result;
+}
+
+__setw_manip setw(int value) {
+    __setw_manip result;
+    result.value = value;
+    return result;
+}
+
+__setfill_manip setfill(char value) {
+    __setfill_manip result;
+    result.value = value;
+    return result;
+}
+
+ostream& operator<<(ostream& stream, __setprecision_manip manipulator) {
+    stream.precision(manipulator.value);
+    return stream;
+}
+
+ostream& operator<<(ostream& stream, __setw_manip manipulator) {
+    stream.width(manipulator.value);
+    return stream;
+}
+
+ostream& operator<<(ostream& stream, __setfill_manip manipulator) {
+    stream.fill((char) manipulator.value);
+    return stream;
+}
+
+ostream& fixed(ostream& stream) {
+    stream.__set_fixed(true);
+    return stream;
+}
+
+ostream& defaultfloat(ostream& stream) {
+    stream.__set_fixed(false);
+    return stream;
+}
+
+ostream& left(ostream& stream) {
+    stream.__set_left(true);
+    return stream;
+}
+
+ostream& right(ostream& stream) {
+    stream.__set_left(false);
+    return stream;
+}
+
+}
+
+#endif

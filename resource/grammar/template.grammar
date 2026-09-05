@@ -38,8 +38,10 @@ TypeParameter
             init ? init[3] : null);
     }
 
+// only an explicit instantiation that is called right away, otherwise 'count < 0 || i + count > n'
+// would be read as a template argument list of the function template 'count'
 TemplateFuncInstanceIdentifier
-    = id:SingleTemplateFuncIdentifier opt:(_ '<' _ TemplateArgumentList? _ &!'>' _ )? {
+    = id:SingleTemplateFuncIdentifier opt:(_ '<' _ TemplateArgumentList? _ '>' _ &'(' )? {
         id.type = AST.IDType.T_FUNC_INS;
         id.args = opt ? (opt[3] || []) : [];
         return id;

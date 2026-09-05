@@ -1,6 +1,8 @@
 #ifndef _STDLIB_H
 #define _STDLIB_H
 
+#include <stddef.h>
+
 __libcall void *malloc(unsigned int num_bytes);
 __libcall void *memset(void * ptr, int ch, unsigned int num_bytes);
 __libcall void free(void * ptr);

@@ -48,6 +48,14 @@
         return String.fromCharCode(charCode);
     }
 
+    // 'typedef struct { ... } S;' and 'typedef enum { ... } E;' declare a type without a tag,
+    // give it a name of its own that no source file can spell
+    let anonymousTypeId = 0;
+    function newAnonymousTypeIdentifier(location) {
+        const name = new AST.SingleIdentifier(location, '$anon' + (anonymousTypeId++), AST.IDType.TYPE, []);
+        return new AST.Identifier(location, [name], false);
+    }
+
     let scopeRoot = { parent: null, names: new Map() };
     let currScope = scopeRoot;
     let globalMap = new Map();

@@ -45,6 +45,9 @@ export class Variable extends Symbol {
     public type: Type;
     public addressType: AddressType;
     public location: number | string;
+    // compiler generated storage, it holds a shallow copy of an object that was already
+    // destructed, so running its destructor again would release the same resources twice
+    public isTemporary: boolean = false;
 
     constructor(shortName: string, fullName: string, fileName: string, type: Type,
                 storageType: AddressType, location: number | string, accessControl: AccessControl) {
@@ -78,7 +81,6 @@ export class FunctionEntity extends OverloadSymbol {
 
     public isLibCall: boolean;
     public hasDefine: boolean;
-    public parametersSize: number;
     public $sp: number; // the 'local $sp' number
 
     public parameterInits: Array<null | string>;
@@ -97,10 +99,15 @@ export class FunctionEntity extends OverloadSymbol {
         this.hasDefine = isDefine;
         this.parameterInits = parameterInits;
         this.$sp = 0;
-        this.parametersSize = type.parameterTypes
+        this.declareActiveScopes = declareActiveScopes;
+    }
+
+    // lazy: a member function may be declared with parameters of its own (still
+    // incomplete) class type, whose size is only known once the class is closed
+    public get parametersSize(): number {
+        return this.type.parameterTypes
             .map((x) => x.length)
             .reduce((x, y) => x + y, 0);
-        this.declareActiveScopes = declareActiveScopes;
     }
 
     public isDefine(): boolean {

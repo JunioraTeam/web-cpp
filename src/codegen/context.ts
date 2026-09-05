@@ -10,6 +10,7 @@ import {CompiledObject, ImportSymbol, WarningDiagnostic} from "../common/object"
 import {AddressType, FunctionEntity, Variable} from "../common/symbol";
 import {AccessControl, Type} from "../type";
 import {WFunction, WExpression, WStatement} from "../wasm";
+import {WAddressHolder} from "./address";
 import {triggerAllDestructor} from "./class/destructor";
 import {MemoryLayout} from "./memory";
 import {ScopeManager} from "./scope";
@@ -27,12 +28,31 @@ export interface CaseContext {
 export interface SwitchContext {
     cases: CaseContext[];
 }
+export interface GotoContext {
+    // label name -> index of the segment that starts at that label
+    labels: Map<string, number>;
+    // block level of the dispatch loop, a goto branches back to it
+    loopLevel: number;
+    stateVariable: WAddressHolder;
+}
+
+export interface TryContext {
+    handlerTypes: Array<{ type: Type, index: number }>;
+    hasCatchAll: boolean;
+    // block level of the try body, a throw branches out of it to reach the handlers
+    catchLevel: number;
+    typeSlot: WAddressHolder;
+    valueSlot: WAddressHolder;
+}
+
 export interface FuncContext {
     statementContainer: WStatement[];
     blockLevel: number;
     switchContext: SwitchContext | null;
     breakStack: number[];
     continueStack: number[];
+    gotoContexts: GotoContext[];
+    tryContexts: TryContext[];
     currentFunction: FunctionEntity | null;
 }
 
@@ -76,6 +96,8 @@ export class CompileContext {
             switchContext: null,
             breakStack: [],
             continueStack: [],
+            gotoContexts: [],
+            tryContexts: [],
             blockLevel: 0,
             currentFunction: null,
         };
@@ -97,6 +119,8 @@ export class CompileContext {
             switchContext: null,
             breakStack: [],
             continueStack: [],
+            gotoContexts: [],
+            tryContexts: [],
             blockLevel: 0,
             currentFunction: functionEntity,
         };
@@ -160,10 +184,11 @@ export class CompileContext {
         };
     }
 
-    public allocTmpVar(type: Type, node: Node): [string, Variable] {
+    public allocTmpVar(type: Type, node: Node, isTemporary: boolean = false): [string, Variable] {
         const varName = this.scopeManager.allocTmpVarName();
         const varEntity = new Variable(varName, varName, node.location.fileName, type,
             AddressType.STACK, this.memory.allocStack(type.length), AccessControl.Public);
+        varEntity.isTemporary = isTemporary;
         this.scopeManager.define(varName, varEntity, node);
         return [varName, varEntity];
     }

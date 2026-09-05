@@ -1,8 +1,14 @@
 Constant
     = BooleanConstant
+    / NullPointerConstant
     / FloatingConstant
     / IntegerConstant
     / CharacterConstant
+
+NullPointerConstant
+    = 'nullptr' !IdentifierPart {
+        return new AST.IntegerConstant(getLocation(), 10, Long.ZERO, '0', null);
+    }
 
 BooleanConstant
     = value:('true' / 'false') !IdentifierPart {

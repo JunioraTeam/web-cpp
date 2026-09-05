@@ -11,6 +11,9 @@ ClassSpecifier
     / classKey:ClassKeyword _ identifier:ClassDeclarationIdentifier {
         return new AST.ClassSpecifier(getLocation(), classKey, identifier, null, []);
     }
+    / classKey:ClassKeyword _ ih:BaseClause? _ ScopeStart _ declarations:StructDeclarationList? _ ScopeEnd {
+        return new AST.ClassSpecifier(getLocation(), classKey, newAnonymousTypeIdentifier(getLocation()), declarations || [] , ih || []);
+    }
 
 QualifiedClassDeclarationIdentifier
     = isFullName:'::'? prefix:TypeIdentifier _ '::' _ name:Id {
@@ -134,11 +137,27 @@ StructDeclarator
     }
 
 EnumSpecifier
-    = 'enum' !IdentifierPart _ identifier:Identifier? _ '{' _ enumerators:EnumeratorList _ ','? _ &!'}' {
-        return new AST.EnumSpecifier(getLocation(), identifier, enumerators);
+    = 'enum' !IdentifierPart _ scoped:EnumKey? _ identifier:EnumDeclarationIdentifier? _ base:EnumBase? _ '{' _ enumerators:EnumeratorList _ ','? _ &!'}' {
+        return new AST.EnumSpecifier(getLocation(), identifier, enumerators, !!scoped);
     }
-    / 'enum' !IdentifierPart _ identifier:Identifier {
-        return new AST.EnumSpecifier(getLocation(), identifier, null);
+    / 'enum' !IdentifierPart _ scoped:EnumKey? _ identifier:EnumDeclarationIdentifier _ base:EnumBase? {
+        return new AST.EnumSpecifier(getLocation(), identifier, null, !!scoped);
+    }
+
+EnumKey
+    = ('class' / 'struct') !IdentifierPart {
+        return text();
+    }
+
+// the tag of an enum becomes a type name, but 'enum A u;' must keep parsing
+// once 'A' has already been registered as one
+EnumDeclarationIdentifier
+    = TypeDeclarationIdentifier
+    / TypeIdentifier
+
+EnumBase
+    = ':' _ specifiers:DeclarationSpecifiers {
+        return specifiers;
     }
 
 EnumeratorList

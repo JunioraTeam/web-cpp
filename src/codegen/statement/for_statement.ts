@@ -64,7 +64,7 @@ export class ForStatement extends Statement {
         } else {
             this.body.codegen(ctx);
         }
-        ctx.currentFuncContext.blockLevel += 3;
+        ctx.currentFuncContext.blockLevel -= 3;
         ctx.currentFuncContext.continueStack.pop();
         ctx.currentFuncContext.breakStack.pop();
         // <-- inner block -->

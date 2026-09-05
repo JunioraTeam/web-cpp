@@ -1,7 +1,20 @@
+import Bn = require("bn.js");
 import {SourceLocation} from "../../common/node";
 import {Emitter} from "../emitter/emitter";
 import {F32, F64, getNativeType, I32, I64, WType} from "../tool/constant";
 import {WExpression} from "./wexpression";
+
+/**
+ * i32.const and i64.const are signed LEB128 of exactly that width, an unsigned constant that
+ * does not fit, like 4294967295, has to be written as the same bits read as a signed number
+ */
+function wrapToWidth(constant: string, bits: number): string {
+    const value = new Bn(constant);
+    if (value.bitLength() < bits && !value.isNeg()) {
+        return value.toString();
+    }
+    return value.toTwos(bits).fromTwos(bits).toString();
+}
 
 export class WConst extends WExpression {
     public type: WType;
@@ -16,10 +29,10 @@ export class WConst extends WExpression {
     public emit(e: Emitter): void {
         switch (getNativeType(this.type)) {
             case WType.i32:
-                e.emitIns(I32.const, WType.i32, parseInt(this.constant), this.location);
+                e.emitIns(I32.const, WType.i32, parseInt(wrapToWidth(this.constant, 32), 10), this.location);
                 break;
             case WType.i64:
-                e.emitIns(I64.const, WType.i64, this.constant.split(".")[0], this.location);
+                e.emitIns(I64.const, WType.i64, wrapToWidth(this.constant.split(".")[0], 64), this.location);
                 break;
             case WType.f32:
                 e.emitIns(F32.const, WType.f32, parseFloat(this.constant), this.location);

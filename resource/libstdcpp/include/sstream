@@ -1,0 +1,408 @@
+#ifndef _CPP_SSTREAM
+#define _CPP_SSTREAM
+
+#include <string>
+
+namespace std {
+
+class ostringstream {
+    string buffer_;
+
+public:
+    ostringstream() {
+    }
+
+    ostringstream(const char *value) {
+        buffer_ = value;
+    }
+
+    string str() {
+        return buffer_;
+    }
+
+    void str(const char *value) {
+        buffer_ = value;
+    }
+
+    void str(string& value) {
+        buffer_ = value;
+    }
+
+    void clear() {
+        buffer_.clear();
+    }
+
+    ostringstream& operator<<(const char *value) {
+        buffer_ += value;
+        return *this;
+    }
+
+    ostringstream& operator<<(string& value) {
+        buffer_ += value;
+        return *this;
+    }
+
+    ostringstream& operator<<(char value) {
+        buffer_.push_back(value);
+        return *this;
+    }
+
+    ostringstream& operator<<(bool value) {
+        buffer_.push_back(value ? '1' : '0');
+        return *this;
+    }
+
+    ostringstream& operator<<(short value) {
+        string text = to_string((long long) value);
+        buffer_ += text;
+        return *this;
+    }
+
+    ostringstream& operator<<(int value) {
+        string text = to_string((long long) value);
+        buffer_ += text;
+        return *this;
+    }
+
+    ostringstream& operator<<(unsigned int value) {
+        string text = to_string((long long) value);
+        buffer_ += text;
+        return *this;
+    }
+
+    ostringstream& operator<<(long long value) {
+        string text = to_string(value);
+        buffer_ += text;
+        return *this;
+    }
+
+    ostringstream& operator<<(float value) {
+        string text = __format_double((double) value, 6, false);
+        buffer_ += text;
+        return *this;
+    }
+
+    ostringstream& operator<<(double value) {
+        string text = __format_double(value, 6, false);
+        buffer_ += text;
+        return *this;
+    }
+};
+
+class istringstream {
+    string buffer_;
+    int position_;
+    bool failed_;
+
+    bool is_space(char value) {
+        return value == ' ' || value == '\n' || value == '\t' || value == '\r';
+    }
+
+    void skip_space() {
+        while (position_ < buffer_.size() && is_space(buffer_[position_])) {
+            position_ = position_ + 1;
+        }
+    }
+
+    // reads the next whitespace delimited token, empty when the input is exhausted
+    string next_token() {
+        skip_space();
+        string token;
+        while (position_ < buffer_.size() && !is_space(buffer_[position_])) {
+            token.push_back(buffer_[position_]);
+            position_ = position_ + 1;
+        }
+        if (token.empty()) {
+            failed_ = true;
+        }
+        return token;
+    }
+
+public:
+    istringstream() {
+        position_ = 0;
+        failed_ = false;
+    }
+
+    istringstream(const char *value) {
+        buffer_ = value;
+        position_ = 0;
+        failed_ = false;
+    }
+
+    istringstream(string& value) {
+        buffer_ = value;
+        position_ = 0;
+        failed_ = false;
+    }
+
+    void str(const char *value) {
+        buffer_ = value;
+        position_ = 0;
+        failed_ = false;
+    }
+
+    void str(string& value) {
+        buffer_ = value;
+        position_ = 0;
+        failed_ = false;
+    }
+
+    string str() {
+        return buffer_;
+    }
+
+    bool fail() {
+        return failed_;
+    }
+
+    bool eof() {
+        return position_ >= buffer_.size();
+    }
+
+    void clear() {
+        failed_ = false;
+    }
+
+    operator bool() {
+        return !failed_;
+    }
+
+    istringstream& operator>>(string& value) {
+        string token = next_token();
+        value = token;
+        return *this;
+    }
+
+    istringstream& operator>>(char& value) {
+        skip_space();
+        if (position_ >= buffer_.size()) {
+            failed_ = true;
+            return *this;
+        }
+        value = buffer_[position_];
+        position_ = position_ + 1;
+        return *this;
+    }
+
+    istringstream& operator>>(int& value) {
+        string token = next_token();
+        if (!failed_) {
+            value = stoi(token);
+        }
+        return *this;
+    }
+
+    istringstream& operator>>(long long& value) {
+        string token = next_token();
+        if (!failed_) {
+            value = stoll(token);
+        }
+        return *this;
+    }
+
+    istringstream& operator>>(double& value) {
+        string token = next_token();
+        if (!failed_) {
+            value = stod(token);
+        }
+        return *this;
+    }
+
+    istringstream& operator>>(float& value) {
+        string token = next_token();
+        if (!failed_) {
+            value = (float) stod(token);
+        }
+        return *this;
+    }
+};
+
+// a stringstream reads and writes the same buffer, reading starts at what has been written
+class stringstream {
+    string buffer_;
+    int position_;
+    bool failed_;
+
+    bool is_space(char value) {
+        return value == ' ' || value == '\n' || value == '\t' || value == '\r';
+    }
+
+    void skip_space() {
+        while (position_ < buffer_.size() && is_space(buffer_[position_])) {
+            position_ = position_ + 1;
+        }
+    }
+
+    string next_token() {
+        skip_space();
+        string token;
+        while (position_ < buffer_.size() && !is_space(buffer_[position_])) {
+            token.push_back(buffer_[position_]);
+            position_ = position_ + 1;
+        }
+        if (token.empty()) {
+            failed_ = true;
+        }
+        return token;
+    }
+
+public:
+    stringstream() {
+        position_ = 0;
+        failed_ = false;
+    }
+
+    stringstream(const char *value) {
+        buffer_ = value;
+        position_ = 0;
+        failed_ = false;
+    }
+
+    stringstream(string& value) {
+        buffer_ = value;
+        position_ = 0;
+        failed_ = false;
+    }
+
+    string str() {
+        return buffer_;
+    }
+
+    void str(const char *value) {
+        buffer_ = value;
+        position_ = 0;
+        failed_ = false;
+    }
+
+    void str(string& value) {
+        buffer_ = value;
+        position_ = 0;
+        failed_ = false;
+    }
+
+    bool fail() {
+        return failed_;
+    }
+
+    bool eof() {
+        return position_ >= buffer_.size();
+    }
+
+    void clear() {
+        failed_ = false;
+    }
+
+    operator bool() {
+        return !failed_;
+    }
+
+    stringstream& operator<<(const char *value) {
+        buffer_ += value;
+        return *this;
+    }
+
+    stringstream& operator<<(string& value) {
+        buffer_ += value;
+        return *this;
+    }
+
+    stringstream& operator<<(char value) {
+        buffer_.push_back(value);
+        return *this;
+    }
+
+    stringstream& operator<<(bool value) {
+        buffer_.push_back(value ? '1' : '0');
+        return *this;
+    }
+
+    stringstream& operator<<(short value) {
+        string text = to_string((long long) value);
+        buffer_ += text;
+        return *this;
+    }
+
+    stringstream& operator<<(int value) {
+        string text = to_string((long long) value);
+        buffer_ += text;
+        return *this;
+    }
+
+    stringstream& operator<<(unsigned int value) {
+        string text = to_string((long long) value);
+        buffer_ += text;
+        return *this;
+    }
+
+    stringstream& operator<<(long long value) {
+        string text = to_string(value);
+        buffer_ += text;
+        return *this;
+    }
+
+    stringstream& operator<<(float value) {
+        string text = __format_double((double) value, 6, false);
+        buffer_ += text;
+        return *this;
+    }
+
+    stringstream& operator<<(double value) {
+        string text = __format_double(value, 6, false);
+        buffer_ += text;
+        return *this;
+    }
+
+    stringstream& operator>>(string& value) {
+        string token = next_token();
+        value = token;
+        return *this;
+    }
+
+    stringstream& operator>>(char& value) {
+        skip_space();
+        if (position_ >= buffer_.size()) {
+            failed_ = true;
+            return *this;
+        }
+        value = buffer_[position_];
+        position_ = position_ + 1;
+        return *this;
+    }
+
+    stringstream& operator>>(int& value) {
+        string token = next_token();
+        if (!failed_) {
+            value = stoi(token);
+        }
+        return *this;
+    }
+
+    stringstream& operator>>(long long& value) {
+        string token = next_token();
+        if (!failed_) {
+            value = stoll(token);
+        }
+        return *this;
+    }
+
+    stringstream& operator>>(double& value) {
+        string token = next_token();
+        if (!failed_) {
+            value = stod(token);
+        }
+        return *this;
+    }
+
+    stringstream& operator>>(float& value) {
+        string token = next_token();
+        if (!failed_) {
+            value = (float) stod(token);
+        }
+        return *this;
+    }
+};
+
+}
+
+#endif

@@ -34,6 +34,7 @@ export function link(fileName: string, objects: CompiledObject[], option: LinkOp
     const functions: WFunction[] = [];
     const data: WDataSegment[] = [];
     const initFuncNames: string[] = [];
+    const initFuncs = new Map<string, WFunction>();
     const externVarMap = new Map<string, number>();
     const sourceMap = new Map<string, SourceMap>();
     const requiredFuncTypes = new Set<string>();
@@ -68,6 +69,7 @@ export function link(fileName: string, objects: CompiledObject[], option: LinkOp
         const initFunc = new WFunction(initFuncName, initFuncName,
             [], [], [], object.globalStatements, EmptyLocation);
         initFunc.dataStart = dataNow;
+        initFuncs.set(object.fileName, initFunc);
         functions.push(initFunc);
         initFuncNames.push(initFuncName);
         dataNow += object.dataSize;
@@ -77,6 +79,12 @@ export function link(fileName: string, objects: CompiledObject[], option: LinkOp
     for (const object of objects) {
         for (const func of object.functions) {
             func.bssStart = bssNow;
+        }
+        // the generated initializer runs the global declarations of the object and addresses
+        // the same bss block, without this it would write over the data of the first object
+        const initFunc = initFuncs.get(object.fileName);
+        if (initFunc) {
+            initFunc.bssStart = bssNow;
         }
         bssNow += object.dataSize;
     }

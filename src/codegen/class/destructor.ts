@@ -35,6 +35,9 @@ export function triggerDestructor(ctx: CompileContext, obj: Variable, node: Node
 export function triggerAllDestructor(ctx: CompileContext, node: Node) {
     for (const item of ctx.scopeManager.currentContext.scope.map.values()) {
         const x = item[0];
+        if (x instanceof Variable && x.isTemporary) {
+            continue;
+        }
         if (x instanceof Variable && x.type instanceof ClassType) {
             triggerDestructor(ctx, x, node);
         } else if (x instanceof Variable && x.type instanceof ArrayType && x.type.elementType instanceof ClassType) {

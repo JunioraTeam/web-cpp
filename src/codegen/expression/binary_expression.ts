@@ -9,9 +9,22 @@ import {MemberExpression} from "../class/member_expression";
 import {CompileContext} from "../context";
 import {arithmeticDeduce, doConversion, doTypeTransfrom, doValueTransform} from "../conversion";
 import {CallExpression} from "../function/call_expression";
+import {isFunctionExists} from "../overload";
 import {Expression, ExpressionResult, recycleExpressionResult} from "./expression";
 import {Identifier} from "./identifier";
 import {UnaryExpression} from "./unary_expression";
+
+function isEqualityOperator(operator: string): boolean {
+    return operator === "==" || operator === "!=";
+}
+
+// `ptr == 0`, `ptr != NULL` and `ptr == nullptr`: exactly one side is a pointer,
+// the other one is an integer (the null pointer constant)
+function isNullPointerCompare(left: Type, right: Type): boolean {
+    return (left instanceof PointerType && right instanceof IntegerType)
+        || (left instanceof IntegerType && right instanceof PointerType);
+}
+
 export class BinaryExpression extends Expression {
     public operator: string;
     // + - * / % & | && || < > <= >= == !=
@@ -43,12 +56,8 @@ export class BinaryExpression extends Expression {
             return this.createPairComparisonExpression().codegen(ctx);
         }
 
-        if (leftType instanceof ClassType) {
-            return this.createOperatorCall(ctx, leftType, rightType).codegen(ctx);
-        }
-
-        if (rightType instanceof ClassType) {
-            throw new SyntaxError(`current not support right overload`, this);
+        if (leftType instanceof ClassType || rightType instanceof ClassType) {
+            return this.createAnyOperatorCall(ctx, leftType, rightType).codegen(ctx);
         }
 
         let left = this.left.codegen(ctx);
@@ -71,12 +80,6 @@ export class BinaryExpression extends Expression {
                     this.location),
             };
         }
-        const op = getOpFromStr(this.operator, dstType.toWType());
-
-        if (op === null) {
-            throw new InternalError(`unsupport op ${this.operator}`);
-        }
-
         if (dstType instanceof PointerType) {
             if (left.type instanceof IntegerType) {
                 left = doValueTransform(ctx, left, this);
@@ -97,6 +100,9 @@ export class BinaryExpression extends Expression {
             }
         }
 
+        const isNullPointerComparison = isEqualityOperator(this.operator)
+            && isNullPointerCompare(leftType, rightType);
+
         let operandType = dstType;
         if ([">=", "<=", ">", "<", "==", "!="].includes(this.operator)) {
             if (leftType instanceof ArithmeticType && rightType instanceof ArithmeticType) {
@@ -105,18 +111,31 @@ export class BinaryExpression extends Expression {
                 operandType = leftType;
             }
         }
-        if (leftType instanceof PointerType && rightType instanceof PointerType) {
+        if ((leftType instanceof PointerType && rightType instanceof PointerType)
+            || isNullPointerComparison) {
             operandType = PrimitiveTypes.int32;
+        }
+
+        // a comparison yields bool, but the wasm opcode must be picked from what is compared,
+        // otherwise `long long`/`double` operands get an i32 comparison
+        const op = getOpFromStr(this.operator, operandType.toWType());
+
+        if (op === null) {
+            throw new InternalError(`unsupport op ${this.operator}`);
         }
 
         let leftExpr;
         let rightExpr;
         if (operandType === PrimitiveTypes.int32
-            && leftType instanceof PointerType && rightType instanceof PointerType) {
-            left = doValueTransform(ctx, left, this);
-            right = doValueTransform(ctx, right, this);
-            leftExpr = left.expr;
-            rightExpr = right.expr;
+            && (isNullPointerComparison
+                || (leftType instanceof PointerType && rightType instanceof PointerType))) {
+            // compare the raw addresses, a pointer operand can not be converted to int32
+            leftExpr = leftType instanceof PointerType
+                ? doValueTransform(ctx, left, this).expr
+                : doConversion(ctx, PrimitiveTypes.int32, left, this);
+            rightExpr = rightType instanceof PointerType
+                ? doValueTransform(ctx, right, this).expr
+                : doConversion(ctx, PrimitiveTypes.int32, right, this);
         } else {
             leftExpr = doConversion(ctx, operandType, left, this);
             rightExpr = doConversion(ctx, operandType, right, this);
@@ -149,8 +168,8 @@ export class BinaryExpression extends Expression {
             return PrimitiveTypes.bool;
         }
 
-        if (left instanceof ClassType) {
-            return this.createOperatorCall(ctx, left, right).deduceType(ctx);
+        if (left instanceof ClassType || right instanceof ClassType) {
+            return this.createAnyOperatorCall(ctx, left, right).deduceType(ctx);
         }
 
         if ("+-*%/".includes(this.operator)) {
@@ -190,6 +209,9 @@ export class BinaryExpression extends Expression {
             if (left instanceof PointerType && right instanceof PointerType) {
                 return PrimitiveTypes.bool;
             }
+            if (isEqualityOperator(this.operator) && isNullPointerCompare(left, right)) {
+                return PrimitiveTypes.bool;
+            }
             throw new TypeError(`unsupport relation compute`, this);
         } else if (["&&", "||"].includes(this.operator)) {
             return PrimitiveTypes.bool;
@@ -202,6 +224,53 @@ export class BinaryExpression extends Expression {
             return this.right.deduceType(ctx);
         }
         throw new InternalError(`no impl at BinaryExpression()`);
+    }
+
+    /**
+     * an overloaded operator is either a member of the left operand or a free function taking
+     * both operands, the latter is the only option when the left operand is not a class
+     */
+    private createAnyOperatorCall(ctx: CompileContext, leftType: Type, rightType: Type): Expression {
+        const name = "#" + this.operator;
+        if (leftType instanceof ClassType
+            && isFunctionExists(ctx, leftType.fullName + "::" + name, [rightType], leftType)) {
+            return this.createOperatorCall(ctx, leftType, rightType);
+        }
+        for (const candidate of this.getFreeOperatorNames(name, leftType, rightType)) {
+            if (isFunctionExists(ctx, candidate, [leftType, rightType])) {
+                return new CallExpression(this.location,
+                    Identifier.fromString(this.location, candidate), [this.left, this.right]);
+            }
+        }
+        if (leftType instanceof ClassType) {
+            // reports the mismatch, or lets the call expression retry with a looser match
+            return this.createOperatorCall(ctx, leftType, rightType);
+        }
+        throw new SyntaxError(`no match for 'operator${this.operator}' (operand types are `
+            + `'${leftType.toString()}' and '${rightType.toString()}')`, {
+            location: this.getOperatorLocation(),
+        } as Node);
+    }
+
+    /**
+     * a free operator is looked up where the expression is written and, like argument dependent
+     * lookup does, in the namespace each class operand was declared in
+     */
+    private getFreeOperatorNames(name: string, leftType: Type, rightType: Type): string[] {
+        const names = [name];
+        for (const type of [leftType, rightType]) {
+            if (!(type instanceof ClassType)) {
+                continue;
+            }
+            const separator = type.fullName.lastIndexOf("::");
+            if (separator > 0) {
+                const enclosing = type.fullName.slice(0, separator) + "::" + name;
+                if (names.indexOf(enclosing) === -1) {
+                    names.push(enclosing);
+                }
+            }
+        }
+        return names;
     }
 
     private createOperatorCall(ctx: CompileContext, leftType: ClassType, rightType: Type) {

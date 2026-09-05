@@ -56,6 +56,10 @@ export function doTypeTransfrom(type: Type): Type {
 
     if (type instanceof ReferenceType) {
         type = type.elementType;
+        // reading through a `const T&` yields a plain T
+        if (type instanceof ConstType) {
+            type = type.elementType;
+        }
     }
     // func to pointer transform
     // TODO::
@@ -204,6 +208,20 @@ export function doConversion(ctx: CompileContext, dstType: Type, src: Expression
             return src.expr;
         }
     }
+    // `void f(const int&); f(1 + 2);` - only a reference to const may bind a temporary, so give
+    // the value a place in the frame of the caller and hand over its address
+    if (shouldToReference && dstType instanceof LeftReferenceType && !src.isLeft
+        && dstType.elementType instanceof ConstType
+        && !(src.type instanceof LeftReferenceType)
+        && !(unwrapConstType(dstType.elementType) instanceof ClassType)) {
+        const targetType = unwrapConstType(dstType.elementType);
+        const value = doConversion(ctx, targetType, src, node, force, false, castKind);
+        const [, variable] = ctx.allocTmpVar(targetType, node, true);
+        const holder = new WAddressHolder(variable.location, AddressType.STACK, node.location);
+        ctx.submitStatement(holder.createStore(ctx, targetType, value));
+        return holder.createLoadAddress(ctx);
+    }
+
     src = doValueTransform(ctx, src, node, shouldToReference);
     const effectiveDstType = unwrapConstType(dstType);
     const effectiveSrcType = unwrapConstType(src.type);

@@ -24,6 +24,7 @@ import {
     WType,
 } from "../wasm";
 import {doBinaryCompute, doLongBinaryCompute, doLongUnaryCompute, doUnaryCompute} from "../wasm/tool/calculator";
+import {isComparisonOperator} from "../wasm/tool/constant";
 import {Runtime, RuntimeOptions} from "./runtime";
 
 type WASMNumber = number | Long;
@@ -138,14 +139,20 @@ export class JSRuntime extends Runtime {
             const b = this.stackTop.stack[this.stackTop.stack.length - 1] as Long;
             const a = this.stackTop.stack[this.stackTop.stack.length - 2] as Long;
             this.stackTop.stack.pop();
-            this.stackTop.stack[this.stackTop.stack.length - 1] = doLongBinaryCompute(ins[0], a, b);
+            const result = doLongBinaryCompute(ins[0], a, b);
+            // an i64 comparison leaves an i32 on the stack, keeping it as a Long would
+            // make the following i32 instruction read an object instead of a number
+            this.stackTop.stack[this.stackTop.stack.length - 1] =
+                isComparisonOperator(ins[0]) ? result.toNumber() : result;
         } else if (I32Unary.hasOwnProperty(ins[0]) || F32Unary.hasOwnProperty(ins[0])
             || F64Unary.hasOwnProperty(ins[0])) {
             const a = this.stackTop.stack[this.stackTop.stack.length - 1] as number;
             this.stackTop.stack[this.stackTop.stack.length - 1] = doUnaryCompute(ins[0], a);
         } else if (I64Unary.hasOwnProperty(ins[0])) {
             const a = this.stackTop.stack[this.stackTop.stack.length - 1] as Long;
-            this.stackTop.stack[this.stackTop.stack.length - 1] = doLongUnaryCompute(ins[0], a);
+            const result = doLongUnaryCompute(ins[0], a);
+            this.stackTop.stack[this.stackTop.stack.length - 1] =
+                ins[0] === I64Unary.eqz ? result.toNumber() : result;
         } else if (I32Convert.hasOwnProperty(ins[0]) || F32Convert.hasOwnProperty(ins[0])
             || F64Convert.hasOwnProperty(ins[0])) {
             if (ins[0] === I32Convert.wrap$i64 || ins[0] === F32Convert.convert_s$i64
@@ -179,7 +186,11 @@ export class JSRuntime extends Runtime {
                     Long.fromBits(this.convertDataView.getUint32(4), this.convertDataView.getUint32(0));
             } else {
                 const a = this.stackTop.stack[this.stackTop.stack.length - 1] as number;
-                this.stackTop.stack[this.stackTop.stack.length - 1] = Long.fromNumber(a);
+                // extend_u reads the i32 as unsigned, the value on the stack is signed
+                const unsignedSource = ins[0] === I64Convert.extend_u$i32
+                    || ins[0] === I64Convert.trunc_u$f32 || ins[0] === I64Convert.trunc_u$f64;
+                this.stackTop.stack[this.stackTop.stack.length - 1] =
+                    unsignedSource ? Long.fromNumber(a >>> 0, true).toSigned() : Long.fromNumber(a);
             }
         } else if (ins[0] === I32.const || ins[0] === F32.const || ins[0] === F64.const) {
             this.stackTop.stack.push(ins[1] as number);

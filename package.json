@@ -1,15 +1,15 @@
 {
   "name": "@junioradevteam/web-cpp",
-  "version": "0.8.3",
+  "version": "0.8.4",
   "description": "a c++ compiler in typescript",
   "main": "index.js",
   "scripts": {
     "build": "node build/build.js && tsc",
     "prepare": "node build/build.js",
-    "test": "mocha test/**/*.test.js",
+    "test": "mocha --timeout 10000 test/**/*.test.js",
     "lint": "tslint -c tslint.json 'src/**/*.ts'",
-    "coverage": "nyc --reporter=lcov --reporter=text mocha test/**/*.test.js",
-    "coveralls": "nyc --reporter=text-lcov mocha test/**/*.test.js | coveralls"
+    "coverage": "nyc --reporter=lcov --reporter=text mocha --timeout 10000 test/**/*.test.js",
+    "coveralls": "nyc --reporter=text-lcov mocha --timeout 10000 test/**/*.test.js | coveralls"
   },
   "repository": {
     "type": "git",

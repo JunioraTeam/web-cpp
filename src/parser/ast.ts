@@ -19,6 +19,7 @@ export * from "../codegen/statement/statement";
 export * from "../codegen/statement/switch_statement";
 export * from "../codegen/statement/if_statement";
 export * from "../codegen/statement/goto_statement";
+export * from "../codegen/statement/try_statement";
 export * from "../codegen/statement/labeled_statement";
 export * from "../codegen/statement/while_statement";
 export * from "../codegen/function/function";

@@ -11,40 +11,56 @@ import {Identifier} from "../expression/identifier";
 export class EnumSpecifier extends Node {
     public identifier: Identifier;
     public enumerators: Enumerator[] | null;
+    public isScoped: boolean;
 
-    constructor(location: SourceLocation, identifier: Identifier, enumerators: Enumerator[] | null) {
+    constructor(location: SourceLocation, identifier: Identifier,
+                enumerators: Enumerator[] | null, isScoped: boolean = false) {
         super(location);
         this.identifier = identifier;
         this.enumerators = enumerators;
+        this.isScoped = isScoped;
     }
 
     public codegen(ctx: CompileContext) {
-        if (this.enumerators != null) {
-            let now = -1, val = 0;
-            for (const enumerator of this.enumerators) {
-                now++;
-                if (enumerator.value === null) {
-                    val = now;
-                } else {
-                    const expr = enumerator.value.codegen(ctx);
-                    expr.expr = expr.expr.fold();
-                    if (!(expr.expr instanceof WConst) ||
-                        !(expr.type instanceof IntegerType)) {
-                        throw new SyntaxError(`enum value must be integer`, this);
-                    }
-                    val = parseInt(expr.expr.constant);
-                }
-                const shortName = enumerator.identifier.getPlainName(ctx);
-                const fullName = enumerator.identifier.getFullName(ctx);
-                ctx.scopeManager.declare(shortName, new Variable(
-                    shortName, fullName,
-                    ctx.fileName, PrimitiveTypes.int32,
-                    AddressType.CONSTANT, val, AccessControl.Public,
-                ), this);
-            }
-        }
+        // a scoped enum (`enum class`) only exposes its enumerators as `Enum::Name`,
+        // so declare them inside a scope named after the enum
+        const scoped = this.isScoped && this.identifier != null;
         if (this.identifier != null) {
             ctx.scopeManager.declare(this.identifier.getLookupName(ctx), PrimitiveTypes.int32, this);
+        }
+        if (this.enumerators != null) {
+            if (scoped) {
+                ctx.scopeManager.enterScope(this.identifier.getPlainName(ctx));
+            }
+            try {
+                let now = -1, val = 0;
+                for (const enumerator of this.enumerators) {
+                    now++;
+                    if (enumerator.value === null) {
+                        val = now;
+                    } else {
+                        const expr = enumerator.value.codegen(ctx);
+                        expr.expr = expr.expr.fold();
+                        if (!(expr.expr instanceof WConst) ||
+                            !(expr.type instanceof IntegerType)) {
+                            throw new SyntaxError(`enum value must be integer`, this);
+                        }
+                        val = parseInt(expr.expr.constant);
+                        now = val;
+                    }
+                    const shortName = enumerator.identifier.getPlainName(ctx);
+                    const fullName = ctx.scopeManager.getFullName(shortName);
+                    ctx.scopeManager.declare(shortName, new Variable(
+                        shortName, fullName,
+                        ctx.fileName, PrimitiveTypes.int32,
+                        AddressType.CONSTANT, val, AccessControl.Public,
+                    ), this);
+                }
+            } finally {
+                if (scoped) {
+                    ctx.scopeManager.exitScope();
+                }
+            }
         }
         return PrimitiveTypes.int32;
     }

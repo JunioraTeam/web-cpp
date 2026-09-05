@@ -40,9 +40,25 @@ export class MemoryLayout {
         this.states = [];
     }
 
+    // the amount of static data is not known up front, grow instead of running off the buffer
+    private reserveData(size: number): void {
+        if (size <= this.dataBuffer.byteLength) {
+            return;
+        }
+        let capacity = Math.max(this.dataBuffer.byteLength, 1);
+        while (capacity < size) {
+            capacity *= 2;
+        }
+        const grown = new ArrayBuffer(capacity);
+        new Uint8Array(grown).set(new Uint8Array(this.dataBuffer));
+        this.dataBuffer = grown;
+        this.data = new DataView(this.dataBuffer);
+    }
+
     public allocData(size: number): number {
         const result = this.dataPtr;
         this.dataPtr += size;
+        this.reserveData(this.dataPtr);
         return result;
     }
 

@@ -53,14 +53,15 @@ export function strcpy(this: Runtime, dst: number, src: number): number {
     return dst;
 }
 
-export function strcmp(this: Runtime, dst: number, src: number): number {
-    let lhs = this.memory.getUint8(src);
-    let rhs = this.memory.getUint8(dst);
-    while (rhs === lhs && rhs !== 0) {
-        src++;
-        dst++;
-        lhs = this.memory.getUint8(src);
-        rhs = this.memory.getUint8(dst);
+// the sign follows the first argument: negative when lhs sorts before rhs
+export function strcmp(this: Runtime, lhsPtr: number, rhsPtr: number): number {
+    let lhs = this.memory.getUint8(lhsPtr);
+    let rhs = this.memory.getUint8(rhsPtr);
+    while (lhs === rhs && lhs !== 0) {
+        lhsPtr++;
+        rhsPtr++;
+        lhs = this.memory.getUint8(lhsPtr);
+        rhs = this.memory.getUint8(rhsPtr);
     }
     if (lhs > rhs) {
         return 1;
@@ -136,15 +137,15 @@ export function strncpy(this: Runtime, dst: number, src: number, size: number): 
     return dst;
 }
 
-export function strncmp(this: Runtime, dst: number, src: number, size: number): number {
+export function strncmp(this: Runtime, lhsPtr: number, rhsPtr: number, size: number): number {
     for (let i = 0; i < size; i++) {
-        const lch = this.memory.getUint8(src + i);
-        const rch = this.memory.getUint8(src + i);
-        if (lch < rch) {
-            return -1;
+        const lch = this.memory.getUint8(lhsPtr + i);
+        const rch = this.memory.getUint8(rhsPtr + i);
+        if (lch !== rch) {
+            return lch < rch ? -1 : 1;
         }
-        if (rch > lch) {
-            return 1;
+        if (lch === 0) {
+            return 0;
         }
     }
     return 0;

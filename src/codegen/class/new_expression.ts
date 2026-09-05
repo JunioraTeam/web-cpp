@@ -12,6 +12,7 @@ import {BinaryExpression} from "../expression/binary_expression";
 import {Expression, ExpressionResult, recycleExpressionResult} from "../expression/expression";
 import {Identifier} from "../expression/identifier";
 import {IntegerConstant} from "../expression/integer_constant";
+import {UnaryExpression} from "../expression/unary_expression";
 import {CallExpression} from "../function/call_expression";
 import {ExpressionStatement} from "../statement/expression_statement";
 import {getForLoop} from "../statement/for_statement";
@@ -110,6 +111,16 @@ export class NewExpression extends Expression {
                 const ctorExpr = new CallExpression(this.location, callee, [
                     Identifier.fromString(this.location, ptrVarName), ...this.arguments]).codegen(ctx);
                 recycleExpressionResult(ctx, this, ctorExpr);
+            } else if (this.arguments.length !== 0) {
+                // `new int(5)`: direct initialization of a non class type
+                if (this.arguments.length !== 1) {
+                    throw new SyntaxError(`new of ${itemType.toString()} takes at most one initializer`, this);
+                }
+                const initExpr = new AssignmentExpression(this.location, "=",
+                    new UnaryExpression(this.location, "*",
+                        Identifier.fromString(this.location, ptrVarName)),
+                    this.arguments[0]).codegen(ctx);
+                recycleExpressionResult(ctx, this, initExpr);
             }
         }
         return Identifier.fromString(this.location, ptrVarName).codegen(ctx);

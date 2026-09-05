@@ -243,6 +243,92 @@ int main()
         assert.include(thrown.message, 'EOF when reading from stdin');
     });
 
+    it('reads whole lines with getline', async function() {
+        const testCode = `
+#include <iostream>
+#include <string>
+using namespace std;
+
+int main()
+{
+    string first, second;
+    getline(cin, first);
+    getline(cin, second);
+    cout << first << "|" << second << "|" << first.size();
+    return 0;
+}
+        `;
+        return await TestBase.testFullCode(testCode, "a b c||5", {
+            isCpp: true,
+            input: "a b c\n\nrest",
+        });
+    });
+
+    it('reads a line up to a custom delimiter with getline', async function() {
+        const testCode = `
+#include <iostream>
+#include <string>
+using namespace std;
+
+int main()
+{
+    string field;
+    getline(cin, field, ',');
+    cout << field << "|";
+    getline(cin, field, ',');
+    cout << field;
+    return 0;
+}
+        `;
+        return await TestBase.testFullCode(testCode, "one|two", {
+            isCpp: true,
+            input: "one,two,three",
+        });
+    });
+
+    it('throws when getline reaches EOF', async function() {
+        const testCode = `
+#include <iostream>
+#include <string>
+using namespace std;
+
+int main()
+{
+    string line;
+    getline(cin, line);
+    cout << line;
+}
+        `;
+        let thrown = null;
+        try {
+            await TestBase.testRun(testCode, {isCpp: true, input: ""});
+        } catch (e) {
+            thrown = e;
+        }
+        assert.isNotNull(thrown, 'expected a runtime error');
+        assert.include(thrown.message, 'EOF when reading from stdin');
+    });
+
+    it('prints const char pointers', async function() {
+        const testCode = `
+#include <iostream>
+using namespace std;
+
+const char *greet() {
+    return "hello";
+}
+
+int main()
+{
+    const char *text = "world";
+    char buffer[6] = "chars";
+    cout << greet() << " " << text << " " << buffer;
+    return 0;
+}
+        `;
+        return await TestBase.testFullCode(testCode, "hello world chars", {isCpp: true});
+    });
+
     it('throws when cin reaches EOF before reading an int', async function() {
         const testCode = `
 #include <iostream>

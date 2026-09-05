@@ -311,12 +311,15 @@ export class WAddressHolder extends WExpression {
         return result;
     }
 
+    // returns a new holder, the same object may be reached from several member expressions
+    // and offsetting it in place would make the offsets pile up
     public makeOffset(offset: number): WAddressHolder {
         if (this.type === AddressType.LOCAL) {
             throw new InternalError(`could not get address of local variable`);
         }
-        this.offset += offset;
-        return this;
+        const result = new WAddressHolder(this.place, this.type, this.location);
+        result.offset = this.offset + offset;
+        return result;
     }
 
     public deduceType(e: Emitter): WType {

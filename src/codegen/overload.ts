@@ -63,10 +63,35 @@ export function doFunctionFilter(func: FunctionEntity, argus: Type[],
             return false;
         }
         return first.elementType.compatWith(funcs.instanceType) &&
-            func.type.parameterTypes.slice(1).every((t, i) => matcher(t, argus[i]));
+            func.type.parameterTypes.slice(1, argus.length + 1).every((t, i) => matcher(t, argus[i]));
     } else {
-        return func.type.parameterTypes.every((t, i) => matcher(t, argus[i]));
+        return func.type.parameterTypes.slice(0, argus.length).every((t, i) => matcher(t, argus[i]));
     }
+}
+
+/**
+ * how many leading parameters `func` must receive from the call site, i.e. every parameter
+ * that has no default value. `this` of a member function is not counted.
+ */
+export function getRequiredArgumentCount(func: FunctionEntity): number {
+    const offset = func.type.isMemberFunction() ? 1 : 0;
+    let required = func.type.parameterTypes.length;
+    while (required > offset) {
+        const init = func.parameterInits[required - 1];
+        // a missing entry means the default value list was never collected
+        if (init === null || init === undefined) { break; }
+        required--;
+    }
+    return required - offset;
+}
+
+export function isArgumentCountAcceptable(func: FunctionEntity, arguCount: number): boolean {
+    const offset = func.type.isMemberFunction() ? 1 : 0;
+    const maximum = func.type.parameterTypes.length - offset;
+    if (func.type.variableArguments) {
+        return arguCount >= maximum;
+    }
+    return arguCount <= maximum && arguCount >= getRequiredArgumentCount(func);
 }
 
 export function removeDuplicatedFunctions(funcs: FunctionEntity[]): FunctionEntity[] {
@@ -105,11 +130,7 @@ export function doFunctionOverloadResolution(ctx: CompileContext,
     // make template after normal
 
     const t2 = t1.concat(t0);
-    const f0 = t2.filter((func) =>
-        (func.type.isMemberFunction() && func.type.parameterTypes.length === argus.length + 1)
-        || (!func.type.isMemberFunction() && func.type.parameterTypes.length === argus.length)
-        || func.type.variableArguments,
-    );
+    const f0 = t2.filter((func) => isArgumentCountAcceptable(func, argus.length));
     const f1 = removeDuplicatedFunctions(f0);
 
     // 2. strong type match

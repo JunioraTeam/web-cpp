@@ -63,25 +63,32 @@ export function doLongBinaryCompute(ope: BinaryOperator, lhs: Long, rhs: Long): 
         case I64Binary.sub:
             return lhs.sub(rhs);
         case I64Binary.mul:
-            return lhs.sub(rhs);
+            return lhs.mul(rhs);
         case I64Binary.div_s:
-        case I64Binary.div_u:
             return lhs.div(rhs);
+        // the unsigned opcodes read the same bits as an unsigned number
+        case I64Binary.div_u:
+            return lhs.toUnsigned().div(rhs.toUnsigned()).toSigned();
         case I64Binary.rem_s:
-        case I64Binary.rem_u:
             return lhs.mod(rhs);
+        case I64Binary.rem_u:
+            return lhs.toUnsigned().mod(rhs.toUnsigned()).toSigned();
         case I64Binary.ge_s:
-        case I64Binary.ge_u:
             return Long.fromNumber(+lhs.gte(rhs));
+        case I64Binary.ge_u:
+            return Long.fromNumber(+lhs.toUnsigned().gte(rhs.toUnsigned()));
         case I64Binary.gt_s:
-        case I64Binary.gt_u:
             return Long.fromNumber(+lhs.gt(rhs));
+        case I64Binary.gt_u:
+            return Long.fromNumber(+lhs.toUnsigned().gt(rhs.toUnsigned()));
         case I64Binary.le_s:
-        case I64Binary.le_u:
             return Long.fromNumber(+lhs.lte(rhs));
+        case I64Binary.le_u:
+            return Long.fromNumber(+lhs.toUnsigned().lte(rhs.toUnsigned()));
         case I64Binary.lt_s:
-        case I64Binary.lt_u:
             return Long.fromNumber(+lhs.lt(rhs));
+        case I64Binary.lt_u:
+            return Long.fromNumber(+lhs.toUnsigned().lt(rhs.toUnsigned()));
         case I64Binary.ne:
             return Long.fromNumber(+lhs.neq(rhs));
         case I64Binary.eq:
@@ -101,66 +108,77 @@ export function doLongBinaryCompute(ope: BinaryOperator, lhs: Long, rhs: Long): 
     }
     throw new RuntimeError(`unsupport operator ${ope}`);
 }
-export function doBinaryCompute(ope: BinaryOperator, lhs: number, rhs: number): number {
+/**
+ * i32 arithmetic wraps to 32 bits and the unsigned opcodes read their operands as unsigned,
+ * a plain javascript number does neither
+ */
+function doInt32BinaryCompute(ope: BinaryOperator, lhs: number, rhs: number): number | null {
     switch (ope) {
-        case I32Binary.add:
+        case I32Binary.add: return (lhs + rhs) | 0;
+        case I32Binary.sub: return (lhs - rhs) | 0;
+        case I32Binary.mul: return Math.imul(lhs, rhs);
+        case I32Binary.div_s: return (lhs / rhs) | 0;
+        case I32Binary.div_u: return (((lhs >>> 0) / (rhs >>> 0)) | 0);
+        case I32Binary.rem_s: return (lhs % rhs) | 0;
+        case I32Binary.rem_u: return ((lhs >>> 0) % (rhs >>> 0)) | 0;
+        case I32Binary.ge_s: return +(lhs >= rhs);
+        case I32Binary.ge_u: return +((lhs >>> 0) >= (rhs >>> 0));
+        case I32Binary.gt_s: return +(lhs > rhs);
+        case I32Binary.gt_u: return +((lhs >>> 0) > (rhs >>> 0));
+        case I32Binary.le_s: return +(lhs <= rhs);
+        case I32Binary.le_u: return +((lhs >>> 0) <= (rhs >>> 0));
+        case I32Binary.lt_s: return +(lhs < rhs);
+        case I32Binary.lt_u: return +((lhs >>> 0) < (rhs >>> 0));
+        case I32Binary.eq: return +(lhs === rhs);
+        case I32Binary.ne: return +(lhs !== rhs);
+        case I32Binary.and: return lhs & rhs;
+        case I32Binary.or: return lhs | rhs;
+        case I32Binary.xor: return lhs ^ rhs;
+        case I32Binary.shl: return lhs << rhs;
+        case I32Binary.shr_s: return lhs >> rhs;
+        case I32Binary.shr_u: return lhs >>> rhs | 0;
+        case I32Binary.rotl: return ((lhs << rhs) | (lhs >>> (32 - rhs))) | 0;
+        case I32Binary.rotr: return ((lhs >>> rhs) | (lhs << (32 - rhs))) | 0;
+    }
+    return null;
+}
+
+export function doBinaryCompute(ope: BinaryOperator, lhs: number, rhs: number): number {
+    const int32Result = doInt32BinaryCompute(ope, lhs, rhs);
+    if (int32Result !== null) {
+        return int32Result;
+    }
+    switch (ope) {
         case F32Binary.add:
         case F64Binary.add:
             return lhs + rhs;
-        case I32Binary.sub:
         case F32Binary.sub:
         case F64Binary.sub:
             return lhs - rhs;
-        case I32Binary.mul:
         case F32Binary.mul:
         case F64Binary.mul:
             return lhs * rhs;
-        case I32Binary.div_s:
-        case I32Binary.div_u:
         case F32Binary.div:
         case F64Binary.div:
             return lhs / rhs;
-        case I32Binary.rem_s:
-        case I32Binary.rem_u:
-            return lhs % rhs;
-        case I32Binary.ge_s:
-        case I32Binary.ge_u:
+        case F32Binary.ge:
+        case F64Binary.ge:
             return +(lhs >= rhs);
-        case I32Binary.gt_s:
-        case I32Binary.gt_u:
         case F32Binary.gt:
         case F64Binary.gt:
             return +(lhs > rhs);
-        case I32Binary.le_s:
-        case I32Binary.le_u:
         case F32Binary.le:
         case F64Binary.le:
             return +(lhs <= rhs);
-        case I32Binary.lt_s:
-        case I32Binary.lt_u:
         case F32Binary.lt:
         case F64Binary.lt:
             return +(lhs < rhs);
-        case I32Binary.eq:
         case F32Binary.eq:
         case F64Binary.eq:
             return +(lhs === rhs);
-        case I32Binary.ne:
         case F32Binary.ne:
         case F64Binary.ne:
             return +(lhs !== rhs);
-        case I32Binary.and:
-            return +(lhs & rhs);
-        case I32Binary.or:
-            return +(lhs | rhs);
-        case I32Binary.xor:
-            return +(lhs ^ rhs);
-        case I32Binary.shl:
-            return lhs << rhs;
-        case I32Binary.shr_s:
-            return lhs >> rhs;
-        case I32Binary.shr_u:
-            return lhs >>> rhs;
         case F32Binary.copysign:
         case F64Binary.copysign:
             return rhs > 0 ? Math.abs(lhs) : -Math.abs(lhs);

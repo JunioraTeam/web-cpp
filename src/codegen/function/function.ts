@@ -22,6 +22,7 @@ import {CompileContext} from "../context";
 import {getInStackSize} from "../conversion";
 import {IntegerConstant} from "../expression/integer_constant";
 import {getShortName, Scope} from "../scope";
+import {codegenWithLabels, containsLabel} from "../statement/label_dispatch";
 import {ReturnStatement} from "./return_statement";
 
 export interface FunctionConfig {
@@ -153,7 +154,11 @@ export function defineFunction(ctx: CompileContext, config: FunctionConfig,
                 new WGetLocal(WType.u32, functionEntity.$sp, node.location),
                 offsetNode, node.location), node.location));
 
-    body.map((item) => item.codegen(ctx));
+    if (containsLabel(body)) {
+        codegenWithLabels(ctx, node, body);
+    } else {
+        body.map((item) => item.codegen(ctx));
+    }
 
     offsetNode.constant = ctx.memory.currentState.stackPtr.toString();
 

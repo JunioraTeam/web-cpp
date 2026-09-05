@@ -77,66 +77,157 @@ public:
 };
 
 class ostream {
+    int precision_;
+    int width_;
+    char fill_;
+    bool fixed_;
+    bool left_;
+
+    // cout and cerr are globals, whose constructor does not run, so zero has to mean default
+    int current_precision() {
+        return precision_ <= 0 ? 6 : precision_;
+    }
+
+    char current_fill() {
+        return fill_ == 0 ? ' ' : fill_;
+    }
+
+    void put(char value) {
+        char buffer[1];
+        buffer[0] = value;
+        write(1, buffer, 1);
+    }
+
+    // the field width set by setw applies to a single value and is cleared afterwards
+    void emit(string& text) {
+        int padding = width_ - text.size();
+        width_ = 0;
+        if (padding <= 0) {
+            __cout_str(text.c_str());
+            return;
+        }
+        if (left_) {
+            __cout_str(text.c_str());
+        }
+        for (int i = 0; i < padding; i++) {
+            put(current_fill());
+        }
+        if (!left_) {
+            __cout_str(text.c_str());
+        }
+    }
+
 public:
-    ostream& operator<<(char *value) {
-        __cout_str(value);
+    ostream() {
+        precision_ = 6;
+        width_ = 0;
+        fill_ = ' ';
+        fixed_ = false;
+        left_ = false;
+    }
+
+    int precision() {
+        return current_precision();
+    }
+
+    void precision(int value) {
+        precision_ = value;
+    }
+
+    int width() {
+        return width_;
+    }
+
+    void width(int value) {
+        width_ = value;
+    }
+
+    char fill() {
+        return current_fill();
+    }
+
+    void fill(char value) {
+        fill_ = value;
+    }
+
+    void __set_fixed(bool value) {
+        fixed_ = value;
+    }
+
+    void __set_left(bool value) {
+        left_ = value;
+    }
+
+    ostream& operator<<(const char *value) {
+        string text = value;
+        emit(text);
         return *this;
     }
 
     ostream& operator<<(string& value) {
-        __cout_str(value.c_str());
+        emit(value);
         return *this;
     }
 
     ostream& operator<<(char value) {
-        char buffer[1];
-        buffer[0] = value;
-        write(1, buffer, 1);
+        string text;
+        text.push_back(value);
+        emit(text);
         return *this;
     }
 
     ostream& operator<<(bool value) {
-        printf("%d", value);
+        string text;
+        text.push_back(value ? '1' : '0');
+        emit(text);
         return *this;
     }
 
     ostream& operator<<(short value) {
-        printf("%d", value);
+        string text = to_string((long long) value);
+        emit(text);
         return *this;
     }
 
     ostream& operator<<(unsigned short value) {
-        printf("%u", value);
+        string text = to_string((unsigned long long) value);
+        emit(text);
         return *this;
     }
 
     ostream& operator<<(int value) {
-        printf("%d", value);
+        string text = to_string((long long) value);
+        emit(text);
         return *this;
     }
 
     ostream& operator<<(unsigned int value) {
-        printf("%u", value);
+        string text = to_string((unsigned long long) value);
+        emit(text);
         return *this;
     }
 
     ostream& operator<<(long long value) {
-        printf("%ld", value);
+        string text = to_string(value);
+        emit(text);
         return *this;
     }
 
     ostream& operator<<(unsigned long long value) {
-        printf("%lu", value);
+        string text = to_string(value);
+        emit(text);
         return *this;
     }
 
     ostream& operator<<(float value) {
-        printf("%f", value);
+        string text = __format_double((double) value, current_precision(), fixed_);
+        emit(text);
         return *this;
     }
 
     ostream& operator<<(double value) {
-        printf("%f", value);
+        string text = __format_double(value, current_precision(), fixed_);
+        emit(text);
         return *this;
     }
 
@@ -150,6 +241,26 @@ ostream& endl(ostream& stream) {
     char buffer[1];
     buffer[0] = '\n';
     write(1, buffer, 1);
+    return stream;
+}
+
+// reads up to (and discarding) the delimiter, an empty line yields an empty string
+istream& getline(istream& stream, string& value, char delimiter) {
+    value.clear();
+    int temp = getchar();
+    if (temp == -1) {
+        __input_error("EOF when reading from stdin");
+    }
+    while (temp != -1 && temp != delimiter) {
+        char ch = temp;
+        value.push_back(ch);
+        temp = getchar();
+    }
+    return stream;
+}
+
+istream& getline(istream& stream, string& value) {
+    getline(stream, value, '\n');
     return stream;
 }
 
