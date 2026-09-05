@@ -164,6 +164,85 @@ int main()
         return await TestBase.testFullCode(testCode, "4", {isCpp: true, input: "1.5 2.5"});
     });
 
+    it('reads std::string with cin extraction', async function() {
+        const testCode = `
+#include <iostream>
+using namespace std;
+
+int main() {
+    string s;
+    cin >> s;
+    cout << s;
+    return 0;
+}
+        `;
+        await TestBase.testFullCode(testCode, "Nima", {isCpp: true, input: "Nima"});
+        await TestBase.testFullCode(testCode, "Nima", {isCpp: true, input: "  \n\t Nima  Heydari\n"});
+    });
+
+    it('reads several strings and skips whitespace between them', async function() {
+        const testCode = `
+#include <iostream>
+using namespace std;
+
+int main()
+{
+    string first, last;
+    int age;
+    cin >> first >> age >> last;
+    cout << first << '|' << age << '|' << last << '|' << last.size();
+    return 0;
+}
+        `;
+        return await TestBase.testFullCode(testCode, "Golrokh|27|Bijhan|6", {
+            isCpp: true,
+            input: "\n  Golrokh\t 27\nBijhan Extra\n",
+        });
+    });
+
+    it('clears the previous value when reusing a string for cin', async function() {
+        const testCode = `
+#include <iostream>
+using namespace std;
+
+int main()
+{
+    string s = "initial value";
+    for (int i = 0; i < 3; i++) {
+        cin >> s;
+        cout << s << ' ' << s.size() << endl;
+    }
+    return 0;
+}
+        `;
+        return await TestBase.testFullCode(testCode, "a 1\nbb 2\nccccccccccccccccc 17", {
+            isCpp: true,
+            input: "a bb ccccccccccccccccc",
+        });
+    });
+
+    it('throws when cin reaches EOF before reading a string', async function() {
+        const testCode = `
+#include <iostream>
+using namespace std;
+
+int main()
+{
+    string s;
+    cin >> s;
+    cout << s;
+}
+        `;
+        let thrown = null;
+        try {
+            await TestBase.testRun(testCode, {isCpp: true, input: "   \n\t  "});
+        } catch (e) {
+            thrown = e;
+        }
+        assert.isNotNull(thrown, 'expected a runtime error');
+        assert.include(thrown.message, 'EOF when reading from stdin');
+    });
+
     it('throws when cin reaches EOF before reading an int', async function() {
         const testCode = `
 #include <iostream>

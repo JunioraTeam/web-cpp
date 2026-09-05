@@ -51,6 +51,23 @@ public:
         return *this;
     }
 
+    istream& operator>>(string& value) {
+        int temp = getchar();
+        while (temp == ' ' || temp == '\n' || temp == '\t' || temp == '\r') {
+            temp = getchar();
+        }
+        if (temp == -1) {
+            __input_error("EOF when reading from stdin");
+        }
+        value.clear();
+        while (temp != -1 && temp != ' ' && temp != '\n' && temp != '\t' && temp != '\r') {
+            char ch = temp;
+            value.push_back(ch);
+            temp = getchar();
+        }
+        return *this;
+    }
+
     istream& operator>>(bool& value) {
         int temp = 0;
         scanf("%d", &temp);
