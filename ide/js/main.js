@@ -1,4 +1,4 @@
-import * as Poly from 'babel-polyfill';
+import 'regenerator-runtime/runtime';
 import * as Ace from "./ace/ace";
 import * as AceTomorrow from "./ace/theme-tomorrow"
 import * as AceCCpp from "./ace/mode-c_cpp";

@@ -3,7 +3,6 @@
  *  @author zcy <zurl@live.com>
  *  Created at 14/07/2018
  */
-import "babel-polyfill";
 import {Runtime, RuntimeOptions} from "./runtime";
 
 export interface NativeRuntimeOptions extends RuntimeOptions {
