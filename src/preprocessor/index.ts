@@ -191,7 +191,7 @@ function doPreprocessCommand(ctx: PreprocessContext, line: string, lineIdx: numb
     }
 }
 
-const Tokenizer = /("[^"]*"|'[^']*'|[\\~!@#$|%^&*()+-={}[\]:";'<>?,.\/]|[A-Za-z_0-9]+|\n|[ \t]+)/y;
+const Tokenizer = /("[^"]*"|'[^']*'|[\\~!@#$|%^&*()+-={}[\]:";'<>?,.\/]|[A-Za-z_0-9]+|\n|[ \t]+|[\s\S])/y;
 
 function tokenize(str: string): string[] {
     let match = Tokenizer.exec(str);

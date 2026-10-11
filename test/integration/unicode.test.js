@@ -104,4 +104,18 @@ int main()
         `;
         return await TestBase.testFullCode(testCode, `[درود]`, {isCpp: true, input: 'درود'});
     });
+
+    it('compiles code with non-ascii comments', async function () {
+        const testCode = `
+#include <iostream>
+using namespace std;
+int main() {
+    cout << "ok"; // سلام
+    /* درود */
+    return 0;
+    // سلام
+}
+        `;
+        return await TestBase.testFullCode(testCode, `ok`, {isCpp: true});
+    });
 });

@@ -87,4 +87,18 @@ keep
 
 `);
     });
+
+    it('keeps tokenizing past non-ASCII characters', function() {
+        const {code} = preprocess("main.cpp", `int main() {
+    return 0; // سلام
+    /* سلام */
+    const char *s = "سلام";
+}
+`);
+        assert.equal(code, `int main() {
+    return 0; \n    \n    const char *s = "سلام";
+}
+
+`);
+    });
 });
